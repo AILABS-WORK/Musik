@@ -139,5 +139,47 @@ def seed_taxonomy(refs_dir: str, config: str = ConfigOpt, db: str = DbOpt, limit
         typer.echo(f"Seeded {n} genres.")
 
 
+@app.command()
+def tracks(config: str = ConfigOpt, db: str = DbOpt, limit: int = 50):
+    """List tracks and their ids (use the ids as examples)."""
+    with _engine(config, db=db) as e:
+        for t in e.store.iter_tracks()[:limit]:
+            typer.echo(f"  {t.id}\t{Path(t.path).name}")
+
+
+@app.command()
+def genres(config: str = ConfigOpt, db: str = DbOpt,
+           level: str = typer.Option(None, help="subset|genre|subgenre"),
+           like: str = typer.Option(None, help="substring filter")):
+    """List genres in the taxonomy (find ids for --parent / confirm)."""
+    with _engine(config, db=db) as e:
+        for g in e.store.iter_genres(level=level):
+            if like and like.lower() not in g.name.lower():
+                continue
+            parent = e.store.get_genre(g.parent_id).name if g.parent_id else "-"
+            typer.echo(f"  {g.id}\t[{g.level}] {g.name}  (parent: {parent})")
+
+
+@app.command(name="add-genre")
+def add_genre(name: str,
+              examples: str = typer.Option(..., "--examples", "-e", help="comma-separated track ids"),
+              parent: int = typer.Option(None, "--parent", "-p", help="parent genre id"),
+              level: str = typer.Option("subgenre"),
+              config: str = ConfigOpt, db: str = DbOpt, model: str = ModelOpt):
+    """Define a custom genre BY EXAMPLE from track ids (builds its centroid)."""
+    ids = [int(x) for x in examples.split(",") if x.strip()]
+    with _engine(config, db=db, model=model) as e:
+        gid = e.add_genre_by_example(name, ids, parent_id=parent, level=level)
+        typer.echo(f"Created '{name}' (id {gid}) from {len(ids)} examples; centroid built.")
+
+
+@app.command()
+def confirm(track_id: int, genre_id: int, config: str = ConfigOpt, db: str = DbOpt, model: str = ModelOpt):
+    """Confirm a track's genre (adds it as an exemplar — the active-learning loop)."""
+    with _engine(config, db=db, model=model) as e:
+        e.confirm(track_id, genre_id)
+        typer.echo(f"Confirmed track {track_id} -> genre {genre_id} (exemplar added, centroid updated).")
+
+
 if __name__ == "__main__":
     app()
