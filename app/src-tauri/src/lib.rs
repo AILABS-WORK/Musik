@@ -41,31 +41,48 @@ fn find_python() -> Option<String> {
     None
 }
 
-/// Best-effort: start the FastAPI sidecar (uvicorn) on 127.0.0.1:8000.
-/// If Python can't be found, we log and continue — the UI shows "sidecar
-/// offline" and the user can run `mgc serve` manually.
+/// A bundled `mgc-sidecar` binary sitting next to the app executable (produced
+/// by `tauri build` with externalBin). Preferred over a dev venv when present.
+fn sidecar_binary() -> Option<std::path::PathBuf> {
+    let name = if cfg!(windows) { "mgc-sidecar.exe" } else { "mgc-sidecar" };
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let cand = dir.join(name);
+    if cand.exists() {
+        Some(cand)
+    } else {
+        None
+    }
+}
+
+/// Best-effort: start the FastAPI sidecar on 127.0.0.1:8000. Prefers a bundled
+/// `mgc-sidecar` binary; otherwise runs `uvicorn mgc.server:app` from the engine
+/// venv. If neither is found we log and continue — the UI shows "sidecar offline"
+/// and the user can run `mgc serve` manually.
 fn spawn_sidecar() -> Option<Child> {
-    let py = match find_python() {
-        Some(p) => p,
-        None => {
-            log::warn!("mgc: engine venv python not found; run `mgc serve` manually");
-            return None;
-        }
+    let mut cmd = if let Some(bin) = sidecar_binary() {
+        log::info!("mgc: using bundled sidecar {}", bin.display());
+        let mut c = Command::new(bin);
+        c.args(["--host", "127.0.0.1", "--port", "8000"]);
+        c
+    } else if let Some(py) = find_python() {
+        log::info!("mgc: using venv python {} for sidecar", py);
+        let mut c = Command::new(py);
+        c.args([
+            "-m", "uvicorn", "mgc.server:app",
+            "--host", "127.0.0.1", "--port", "8000",
+            "--log-level", "warning",
+        ]);
+        c
+    } else {
+        log::warn!("mgc: no bundled sidecar and no engine venv python; run `mgc serve` manually");
+        return None;
     };
-    let mut cmd = Command::new(&py);
-    cmd.args([
-        "-m", "uvicorn", "mgc.server:app",
-        "--host", "127.0.0.1", "--port", "8000",
-        "--log-level", "warning",
-    ]);
     if let Ok(cfg) = std::env::var("MGC_CONFIG") {
         cmd.env("MGC_CONFIG", cfg);
     }
     match cmd.spawn() {
-        Ok(child) => {
-            log::info!("mgc sidecar started via {}", py);
-            Some(child)
-        }
+        Ok(child) => Some(child),
         Err(e) => {
             log::error!("mgc: failed to start sidecar: {}", e);
             None

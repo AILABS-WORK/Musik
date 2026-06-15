@@ -755,3 +755,247 @@ table.tracks tbody tr.selected {
     opacity: 1;
   }
 }
+
+/* ===== Segmented control (Table | Map, PCA | UMAP) ===== */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.seg__btn {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  border: none;
+  border-right: 1px solid var(--border-2);
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.seg__btn:last-child {
+  border-right: none;
+}
+
+.seg__btn:hover:not(:disabled) {
+  background: #232833;
+  color: var(--text);
+}
+
+.seg__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.seg__btn.active {
+  background: rgba(45, 212, 191, 0.16);
+  color: var(--accent);
+}
+
+/* ===== Main view toggle bar ===== */
+.viewtoggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* ===== Map view ===== */
+.map__heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.map-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, #14181f 0%, var(--bg) 70%);
+}
+
+.map-svg {
+  display: block;
+}
+
+.map-pt {
+  cursor: pointer;
+  transition: r 0.1s ease;
+}
+
+.map-pt:hover {
+  filter: brightness(1.25);
+}
+
+.map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 240px;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.map-tooltip__name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-tooltip__genre {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.map-legend {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  max-height: 50%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(22, 25, 31, 0.86);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px 9px;
+  z-index: 4;
+}
+
+.map-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.map-legend__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.map-legend__label {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== Inline genre relabel (TrackTable) ===== */
+.genre-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 3px;
+  max-width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.genre-cell:hover {
+  border-color: var(--border-2);
+  background: var(--panel-2);
+}
+
+.genre-check {
+  color: var(--accent-2);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+
+.genre-edit {
+  width: 100%;
+  font-size: 11px;
+  padding: 2px 5px;
+}
+
+/* ===== Clusters panel ===== */
+.cluster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cluster-card {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-2);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cluster-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cluster-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.cluster-card__size {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.cluster-card__members {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cluster-card__member {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-card__more {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.cluster-card__action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cluster-card__action input[type="text"],
+.cluster-card__action select {
+  flex: 1 1 auto;
+  min-width: 0;
+}

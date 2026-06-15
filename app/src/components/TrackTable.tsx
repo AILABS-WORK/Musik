@@ -1,30 +1,42 @@
 import { useMemo, useState } from "react";
-import type { Track } from "../types";
+import type { Genre, Track } from "../types";
 import { Meter } from "./Meter";
 
 type SortDir = "none" | "asc" | "desc";
 
 interface TrackTableProps {
   tracks: Track[];
+  genres: Genre[];
   checked: Set<number>;
   selectedId: number | null;
   onToggleCheck: (id: number) => void;
   onToggleAll: (ids: number[], check: boolean) => void;
   onSelect: (id: number) => void;
   onPlay: (id: number) => void;
+  /** Confirm a genre assignment for a track, then refresh + report. */
+  onConfirm: (trackId: number, genreId: number) => void;
 }
 
 export function TrackTable({
   tracks,
+  genres,
   checked,
   selectedId,
   onToggleCheck,
   onToggleAll,
   onSelect,
   onPlay,
+  onConfirm,
 }: TrackTableProps) {
   const [filter, setFilter] = useState("");
   const [sortDir, setSortDir] = useState<SortDir>("none");
+  const [editing, setEditing] = useState<number | null>(null);
+
+  const genreByName = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of genres) m.set(g.name, g.id);
+    return m;
+  }, [genres]);
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -121,13 +133,51 @@ export function TrackTable({
                       {t.name}
                     </div>
                   </td>
-                  <td className="col-genre">
-                    {t.genre ? (
-                      <span className="genre-pill" title={t.genre}>
-                        {t.genre}
-                      </span>
+                  <td
+                    className="col-genre"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {editing === t.id ? (
+                      <select
+                        className="genre-edit"
+                        autoFocus
+                        defaultValue={
+                          t.genre && genreByName.has(t.genre)
+                            ? String(genreByName.get(t.genre))
+                            : ""
+                        }
+                        onBlur={() => setEditing(null)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditing(null);
+                          if (v) onConfirm(t.id, Number(v));
+                        }}
+                      >
+                        <option value="">— pick genre —</option>
+                        {genres.map((g) => (
+                          <option key={g.id} value={String(g.id)}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
-                      <span className="dash">—</span>
+                      <button
+                        type="button"
+                        className="genre-cell"
+                        onClick={() => setEditing(t.id)}
+                        title={t.genre ?? "click to assign a genre"}
+                      >
+                        {t.genre ? (
+                          <span className="genre-pill">{t.genre}</span>
+                        ) : (
+                          <span className="dash">—</span>
+                        )}
+                        {t.assignment_status === "confirmed" && (
+                          <span className="genre-check" title="confirmed">
+                            ✓
+                          </span>
+                        )}
+                      </button>
                     )}
                   </td>
                   <td className="col-conf">

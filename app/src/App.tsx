@@ -3,12 +3,16 @@ import type { Genre, Progress, SimilarItem, Track } from "./types";
 import { api } from "./api";
 import { TopBar } from "./components/TopBar";
 import { TrackTable } from "./components/TrackTable";
+import { MapView } from "./components/MapView";
 import { SidePanel } from "./components/SidePanel";
 import type { SideTab } from "./components/SidePanel";
 import { GenrePanel } from "./components/GenrePanel";
 import { SimilarPanel } from "./components/SimilarPanel";
+import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
+
+type MainView = "table" | "map";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -24,6 +28,7 @@ export default function App() {
   const [similarLoading, setSimilarLoading] = useState(false);
 
   const [tab, setTab] = useState<SideTab>("genres");
+  const [view, setView] = useState<MainView>("table");
 
   const [status, setStatus] = useState("ready");
   const [statusError, setStatusError] = useState(false);
@@ -218,6 +223,21 @@ export default function App() {
     [checked, report, refreshAll],
   );
 
+  // ---- inline confirm / relabel from the track table ----
+  const confirmGenre = useCallback(
+    async (trackId: number, genreId: number) => {
+      try {
+        await api.confirm({ track_id: trackId, genre_id: genreId });
+        const gName = genres.find((g) => g.id === genreId)?.name ?? `#${genreId}`;
+        report(`assigned track ${trackId} → “${gName}”`);
+        await refreshAll();
+      } catch (e) {
+        report(`confirm failed: ${errMsg(e)}`, true);
+      }
+    },
+    [genres, report, refreshAll],
+  );
+
   const selectedTrack = tracks.find((t) => t.id === selectedId) ?? null;
   const checkedIds = Array.from(checked);
   const embedRunning = progress?.running ?? false;
@@ -235,15 +255,43 @@ export default function App() {
 
       <div className="app__body">
         <main className="app__main">
-          <TrackTable
-            tracks={tracks}
-            checked={checked}
-            selectedId={selectedId}
-            onToggleCheck={toggleCheck}
-            onToggleAll={toggleAll}
-            onSelect={selectTrack}
-            onPlay={play}
-          />
+          <div className="viewtoggle">
+            <div className="seg">
+              <button
+                className={view === "table" ? "seg__btn active" : "seg__btn"}
+                onClick={() => setView("table")}
+              >
+                Table
+              </button>
+              <button
+                className={view === "map" ? "seg__btn active" : "seg__btn"}
+                onClick={() => setView("map")}
+              >
+                Map
+              </button>
+            </div>
+          </div>
+          {view === "table" ? (
+            <TrackTable
+              tracks={tracks}
+              genres={genres}
+              checked={checked}
+              selectedId={selectedId}
+              onToggleCheck={toggleCheck}
+              onToggleAll={toggleAll}
+              onSelect={selectTrack}
+              onPlay={play}
+              onConfirm={(trackId, genreId) => {
+                void confirmGenre(trackId, genreId);
+              }}
+            />
+          ) : (
+            <MapView
+              tracks={tracks}
+              selectedId={selectedId}
+              onSelect={selectTrack}
+            />
+          )}
         </main>
 
         <SidePanel active={tab} onTab={setTab}>
@@ -260,6 +308,14 @@ export default function App() {
               items={similar}
               loading={similarLoading}
               onPlay={play}
+            />
+          )}
+          {tab === "clusters" && (
+            <ClustersPanel
+              tracks={tracks}
+              genres={genres}
+              report={report}
+              refresh={refreshAll}
             />
           )}
           {tab === "apply" && (

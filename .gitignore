@@ -24,6 +24,12 @@ node_modules/
 src-tauri/target/
 dist/
 
+# PyInstaller sidecar build artifacts
+/build/
+*.spec
+/dist/
+app/src-tauri/binaries/
+
 # Local data / DB / vectors
 *.sqlite
 *.db

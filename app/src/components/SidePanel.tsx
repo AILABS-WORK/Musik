@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type SideTab = "genres" | "similar" | "apply";
+export type SideTab = "genres" | "similar" | "clusters" | "apply";
 
 interface SidePanelProps {
   active: SideTab;
@@ -11,6 +11,7 @@ interface SidePanelProps {
 const TABS: { id: SideTab; label: string }[] = [
   { id: "genres", label: "Genres" },
   { id: "similar", label: "Similar" },
+  { id: "clusters", label: "Clusters" },
   { id: "apply", label: "Apply" },
 ];
 

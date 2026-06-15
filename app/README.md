@@ -42,13 +42,40 @@ cd app && npm run dev                # terminal 2 → open http://localhost:5173
 4. **Suggest** to classify everything; sort by confidence and **review**.
 5. **Apply** tab: preview then write tags, preview then organize into `Genre/Subgenre`, or **Undo**.
 
-## Build an installer
+## Build a shippable installer (with bundled sidecar)
+To ship the app without requiring a Python install on the user's machine, bundle
+the sidecar as a standalone binary:
+
+> ⚠️ **Windows Defender note:** PyInstaller's onefile bootloader exe is a frequent
+> antivirus false-positive — Defender may quarantine `mgc-sidecar.exe` the instant
+> it's written (the build then fails with `FileNotFoundError ... mgc-sidecar.exe`).
+> Add a Defender **exclusion** for the output/build folder (Settings → Virus &
+> threat protection → Exclusions) — or build on macOS/Linux — before step 1.
+
 ```bash
-npm run tauri build
+# 1) Build the standalone sidecar (baseline engine; ~tens of MB)
+engine/.venv/Scripts/python engine/packaging/build_sidecar.py     # -> dist/mgc-sidecar.exe
+
+# 2) Place it as a Tauri sidecar (target-triple suffix; find yours with `rustc -vV`)
+mkdir -p app/src-tauri/binaries
+cp dist/mgc-sidecar.exe app/src-tauri/binaries/mgc-sidecar-x86_64-pc-windows-msvc.exe
+
+# 3) Add it to app/src-tauri/tauri.conf.json:  "bundle": { "externalBin": ["binaries/mgc-sidecar"] }
+
+# 4) Build the installer
+cd app && npm run tauri build
 ```
-> Note: this bundles the frontend + Rust shell. Shipping the Python sidecar as a
-> standalone (PyInstaller) binary inside the installer is a later step; for now
-> the app expects the engine venv to be present (dev workflow).
+The Rust shell prefers a bundled `mgc-sidecar` next to the app executable and
+falls back to the engine venv in dev — so the same build works both ways.
+
+> The bundled sidecar is the **baseline** engine only. For the heavy model
+> backends (torch/essentia) the user still installs `engine[models]` and selects
+> the model in the app; bundling multi-GB CUDA wheels is out of scope.
+
+## Dev build (no bundling)
+```bash
+npm run tauri build   # bundles frontend + Rust shell; expects the engine venv at runtime
+```
 
 ## Config
 The sidecar reads `MGC_CONFIG` (or `mgc.config.json` in its cwd). The in-app
