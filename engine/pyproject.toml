@@ -28,8 +28,15 @@ viz = [
     "umap-learn",
     "matplotlib",
 ]
+server = [
+    "fastapi",
+    "uvicorn",
+]
 dev = [
     "pytest",
+    "fastapi",
+    "uvicorn",
+    "httpx",
 ]
 
 [project.scripts]

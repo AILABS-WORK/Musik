@@ -35,8 +35,10 @@ class Store:
 
     # ---- lifecycle ----------------------------------------------------------
     @classmethod
-    def open(cls, path: str | Path) -> "Store":
-        conn = sqlite3.connect(str(path))
+    def open(cls, path: str | Path, check_same_thread: bool = True) -> "Store":
+        # check_same_thread=False lets the API server share one connection across
+        # request threads (access is serialized by a lock in the server).
+        conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")

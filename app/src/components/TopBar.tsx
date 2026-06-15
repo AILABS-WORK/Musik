@@ -1,0 +1,231 @@
+import { useCallback, useEffect, useState } from "react";
+import type { Health, Progress } from "../types";
+import { api } from "../api";
+
+const MODELS = ["baseline", "discogs", "mert", "clap"];
+
+interface TopBarProps {
+  busy: boolean;
+  onScan: () => void;
+  onEmbed: () => void;
+  onSuggest: () => void;
+  /** Live embed progress; null when no embed has run / not running. */
+  progress: Progress | null;
+  /** Bubble a status string (and error flag) up to the shared status bar. */
+  report: (msg: string, isError?: boolean) => void;
+  /** Notify parent of config so it can react (e.g. show library path). */
+  onConfigLoaded?: (model: string, library: string | null) => void;
+}
+
+export function TopBar({
+  busy,
+  onScan,
+  onEmbed,
+  onSuggest,
+  progress,
+  report,
+  onConfigLoaded,
+}: TopBarProps) {
+  const [health, setHealth] = useState<Health | null>(null);
+  const [offline, setOffline] = useState(false);
+
+  const [libraryPath, setLibraryPath] = useState("");
+  const [model, setModel] = useState("baseline");
+  const [refsDir, setRefsDir] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+
+  // Poll health every few seconds.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const h = await api.health();
+        if (!alive) return;
+        setHealth(h);
+        setOffline(false);
+      } catch {
+        if (!alive) return;
+        setOffline(true);
+      }
+    };
+    void tick();
+    const t = window.setInterval(tick, 4000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  // Load config once on mount.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const cfg = await api.getConfig();
+        if (!alive) return;
+        setLibraryPath(cfg.library_root ?? "");
+        setModel(cfg.active_model || "baseline");
+        onConfigLoaded?.(cfg.active_model, cfg.library_root);
+      } catch (e) {
+        report(`config load failed: ${errMsg(e)}`, true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveConfig = useCallback(async () => {
+    setSaving(true);
+    try {
+      const cfg = await api.setConfig({
+        library_root: libraryPath.trim() || null,
+        active_model: model,
+      });
+      setLibraryPath(cfg.library_root ?? "");
+      setModel(cfg.active_model || "baseline");
+      onConfigLoaded?.(cfg.active_model, cfg.library_root);
+      report(`config saved · model ${cfg.active_model}`);
+    } catch (e) {
+      report(`save config failed: ${errMsg(e)}`, true);
+    } finally {
+      setSaving(false);
+    }
+  }, [libraryPath, model, onConfigLoaded, report]);
+
+  const seed = useCallback(async () => {
+    if (!refsDir.trim()) {
+      report("refs dir is empty", true);
+      return;
+    }
+    setSeeding(true);
+    try {
+      const r = await api.seedTaxonomy(refsDir.trim());
+      report(`seeded taxonomy · ${r.seeded} genres`);
+    } catch (e) {
+      report(`seed taxonomy failed: ${errMsg(e)}`, true);
+    } finally {
+      setSeeding(false);
+    }
+  }, [refsDir, report]);
+
+  const embedRunning = progress?.running ?? false;
+  const total = progress?.total ?? 0;
+  const done = progress?.done ?? 0;
+  const pct = total > 0 ? (done / total) * 100 : 0;
+
+  return (
+    <header className="topbar">
+      <div className="topbar__row">
+        <div className="brand">
+          <span className="brand__logo">MGC</span>
+          <span className="brand__sub">music genre classifier</span>
+        </div>
+
+        <div className={healthClass(offline)}>
+          <span className="health__dot" />
+          {offline ? (
+            <span>sidecar offline</span>
+          ) : health ? (
+            <span>
+              {health.model} · {health.tracks} tracks · {health.genres} genres
+            </span>
+          ) : (
+            <span>connecting…</span>
+          )}
+        </div>
+
+        <div className="spacer" />
+
+        <button
+          className="btn btn--accent"
+          onClick={onScan}
+          disabled={busy || embedRunning}
+        >
+          Scan
+        </button>
+        <button
+          className="btn btn--accent"
+          onClick={onEmbed}
+          disabled={busy || embedRunning}
+        >
+          Embed
+        </button>
+        <button
+          className="btn btn--accent"
+          onClick={onSuggest}
+          disabled={busy || embedRunning}
+        >
+          Suggest
+        </button>
+      </div>
+
+      <div className="topbar__row">
+        <div className="field" style={{ flex: "1 1 280px" }}>
+          <span className="field__label">Library</span>
+          <input
+            type="text"
+            className="input--path"
+            placeholder="/path/to/music/library"
+            value={libraryPath}
+            onChange={(e) => setLibraryPath(e.target.value)}
+          />
+        </div>
+
+        <div className="field">
+          <span className="field__label">Model</span>
+          <select value={model} onChange={(e) => setModel(e.target.value)}>
+            {MODELS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button className="btn" onClick={saveConfig} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+
+        <div className="field">
+          <span className="field__label">Refs</span>
+          <input
+            type="text"
+            className="input--path"
+            placeholder="/path/to/reference/genres"
+            value={refsDir}
+            onChange={(e) => setRefsDir(e.target.value)}
+            style={{ minWidth: 160 }}
+          />
+        </div>
+        <button className="btn" onClick={seed} disabled={seeding}>
+          {seeding ? "Seeding…" : "Seed taxonomy"}
+        </button>
+      </div>
+
+      {embedRunning && (
+        <div className="progress">
+          <span className="progress__label">
+            embedding {done}/{total}
+          </span>
+          <div className="progress__track">
+            <div className="progress__fill" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="progress__last" title={progress?.last ?? ""}>
+            {progress?.last || "…"}
+          </span>
+        </div>
+      )}
+    </header>
+  );
+}
+
+function healthClass(offline: boolean): string {
+  return offline ? "health health--off" : "health health--ok";
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}

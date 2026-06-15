@@ -16,9 +16,10 @@ from mgc.types import Suggestion
 
 
 class Engine:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, store: Optional[Store] = None,
+                 check_same_thread: bool = True):
         self.config = config
-        self.store = Store.open(config.db_path)
+        self.store = store or Store.open(config.db_path, check_same_thread=check_same_thread)
         self._embedder = None  # lazy
 
     # ---- lifecycle ----------------------------------------------------------

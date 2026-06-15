@@ -181,5 +181,15 @@ def confirm(track_id: int, genre_id: int, config: str = ConfigOpt, db: str = DbO
         typer.echo(f"Confirmed track {track_id} -> genre {genre_id} (exemplar added, centroid updated).")
 
 
+@app.command()
+def serve(config: str = ConfigOpt, host: str = "127.0.0.1", port: int = 8000):
+    """Run the local HTTP sidecar that the desktop app talks to."""
+    import uvicorn
+
+    from mgc.server import create_app
+    typer.echo(f"mgc sidecar on http://{host}:{port}  (config={config})")
+    uvicorn.run(create_app(Config.load(config)), host=host, port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()
