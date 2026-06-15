@@ -137,6 +137,10 @@ actions_log(id, type, track_id, from_value, to_value, undo_token, status, ts)
 
 Vector storage: BLOB per embedding (or a single numpy/parquet store) loaded into memory; no external vector DB.
 
+Notes for the implementer:
+- **Single active embedding model.** The `(track_id, model, …)` key lets the spike store vectors from multiple models per track, but all similarity/centroid math operates on exactly one **active** model's vectors at a time (the three candidates have different dimensionalities — never mix embedding spaces). The active model is set in config.
+- **By-name (CLAP) genres reuse the `centroid` column.** A genre seeded by name/description stores its CLAP text-encoder vector in the same `genres.centroid` column (flagged via `source` and an `is_text_centroid` boolean); classification treats text and example-derived centroids identically at query time (cosine in the shared CLAP audio+text space). By-name genres therefore require CLAP to be the active model.
+
 ---
 
 ## 6. Output Actions & Safety
@@ -204,6 +208,7 @@ Python 3.11+ · PyTorch (CUDA, for the RTX 5080) · Essentia + `transformers` (M
 - **Model packaging size** (Phase 2): torch + models is multi-GB; affects the Tauri installer. A Phase 2 concern (possible ONNX/quantization later).
 - **Taxonomy normalization:** RYM JSON has some Chinese fields; needs normalization to English canonical names during ingest.
 - **Which embedding wins** is resolved empirically in the spike, not assumed here.
+- **Subset-tier mapping from RYM.** RYM's hierarchy may not map cleanly onto the user's mental "subsets" (house/techno/trance under Electronic). Deriving `subset`-level membership from the RYM seed needs an explicit implementation task (heuristic roll-up + a small manual curation pass), not silent inference. The subset tier only affects roll-up/browsing, not the 2-level `Genre/Subgenre` folder output.
 
 ---
 
