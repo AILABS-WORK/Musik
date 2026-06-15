@@ -1,0 +1,36 @@
+# Cloned reference repos — analysis only, not part of this project (includes multi-GB GTZAN audio)
+research/repos/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ML models / caches / artifacts
+models/
+*.pt
+*.onnx
+*.ckpt
+*.h5
+.cache/
+
+# Node / Tauri (Phase 2)
+node_modules/
+src-tauri/target/
+dist/
+
+# Local data / DB / vectors
+*.sqlite
+*.db
+*.npy
+*.parquet
+data/
+
+# OS
+.DS_Store
+Thumbs.db
