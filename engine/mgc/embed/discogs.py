@@ -42,12 +42,43 @@ class DiscogsEmbedder(Embedder, ZeroShotClassifier):
         embed_graph: str = "discogs-effnet-bs64-1.pb",
         genre_graph: str | None = "genre_discogs400-discogs-effnet-1.pb",
         labels: list[str] | None = None,
+        genre_metadata: str | None = None,
     ) -> None:
         self._embed_graph = embed_graph
         self._genre_graph = genre_graph
         self._labels = labels
+        # Defaults to the metadata JSON Essentia ships beside the graph.
+        self._genre_metadata = genre_metadata
         self._embed_model = None
         self._genre_model = None
+
+    def _load_labels(self) -> list[str]:
+        """Resolve the 400 genre_discogs400 class names.
+
+        Order: explicit ``labels`` -> the model's metadata JSON ('classes' list)
+        -> hard error. We deliberately never fall back to placeholder labels,
+        because that would silently produce meaningless zero-shot genres.
+        """
+        if self._labels is not None:
+            return self._labels
+        import json
+        import os
+
+        meta = self._genre_metadata
+        if meta is None and self._genre_graph:
+            meta = os.path.splitext(self._genre_graph)[0] + ".json"
+        if meta and os.path.exists(meta):
+            with open(meta, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            classes = data.get("classes") or data.get("labels")
+            if classes:
+                self._labels = list(classes)
+                return self._labels
+        raise RuntimeError(
+            "genre_discogs400 class labels unavailable. Pass labels=[...] or place "
+            "the model metadata JSON (e.g. 'genre_discogs400-discogs-effnet-1.json' "
+            "with a 'classes' list) next to the graph. Refusing to emit placeholder labels."
+        )
 
     def _load_embed(self):
         if self._embed_model is None:
@@ -94,5 +125,6 @@ class DiscogsEmbedder(Embedder, ZeroShotClassifier):
         emb = np.asarray(embed_model(x), dtype=np.float32)
         preds = np.asarray(genre_model(emb), dtype=np.float32)
         probs = preds.mean(axis=0) if preds.ndim > 1 else preds
-        labels = self._labels or [f"genre_{i}" for i in range(probs.shape[0])]
-        return {labels[i]: float(probs[i]) for i in range(min(len(labels), probs.shape[0]))}
+        labels = self._load_labels()
+        n = min(len(labels), probs.shape[0])
+        return {labels[i]: float(probs[i]) for i in range(n)}

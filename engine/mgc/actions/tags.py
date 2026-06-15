@@ -58,6 +58,19 @@ def read_genre(path: str) -> Optional[str]:
             if not vals:
                 return None
             return str(vals[0])
+        if ext in (".wav", ".wave", ".aiff", ".aif"):
+            # WAV/AIFF carry an ID3 chunk in mutagen — read TCON like MP3.
+            if ext in (".wav", ".wave"):
+                from mutagen.wave import WAVE as _Container
+            else:
+                from mutagen.aiff import AIFF as _Container
+            audio = _Container(path)
+            tags = audio.tags
+            if not tags:
+                return None
+            frame = tags.get("TCON")
+            vals = list(frame.text) if frame is not None else []
+            return str(vals[0]) if vals else None
     except Exception:
         return None
     return None
@@ -105,6 +118,20 @@ def _write_genre_to_file(
         if write_parent_to_grouping and parent:
             audio.tags["\xa9grp"] = [parent]
         audio.save()
+    elif ext in (".wav", ".wave", ".aiff", ".aif"):
+        from mutagen.id3 import TCON, TIT1
+
+        if ext in (".wav", ".wave"):
+            from mutagen.wave import WAVE as _Container
+        else:
+            from mutagen.aiff import AIFF as _Container
+        audio = _Container(path)
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags.setall("TCON", [TCON(encoding=3, text=[subgenre])])
+        if write_parent_to_grouping and parent:
+            audio.tags.setall("TIT1", [TIT1(encoding=3, text=[parent])])
+        audio.save()
     else:
         raise RuntimeError(f"Unsupported audio format for tagging: {ext or path}")
 
@@ -128,7 +155,12 @@ def write_genre(
     if dry_run:
         return result
 
-    _write_genre_to_file(path, subgenre, parent, write_parent_to_grouping)
+    # Fail-soft: a single unwritable/odd file must never abort a bulk run.
+    try:
+        _write_genre_to_file(path, subgenre, parent, write_parent_to_grouping)
+    except Exception as e:
+        result["error"] = str(e)
+        return result
     store.log_action(
         ACTION_TAG,
         track.id,
@@ -196,6 +228,15 @@ def _clear_genre(path: str) -> None:
             audio = MP4(path)
             if audio.tags and "\xa9gen" in audio.tags:
                 del audio.tags["\xa9gen"]
+                audio.save()
+        elif ext in (".wav", ".wave", ".aiff", ".aif"):
+            if ext in (".wav", ".wave"):
+                from mutagen.wave import WAVE as _Container
+            else:
+                from mutagen.aiff import AIFF as _Container
+            audio = _Container(path)
+            if audio.tags:
+                audio.tags.delall("TCON")
                 audio.save()
     except Exception:
         pass
