@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mgc-engine"
+version = "0.1.0"
+description = "Music Genre Classifier engine — embedding-based, few-shot custom subgenres, bulk tagging + folder organization (Phase 1)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "soundfile",
+    "scikit-learn",
+    "mutagen",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# Heavy model backends — installed on demand, never required for the test suite.
+models = [
+    "torch",
+    "transformers",       # MERT
+    "laion-clap",         # CLAP (audio+text)
+    "librosa",            # richer decode/features
+    # essentia / essentia-tensorflow (Discogs-EffNet) — install per-platform; see README (Windows caveat)
+]
+viz = [
+    "umap-learn",
+    "matplotlib",
+]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+mgc = "mgc.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mgc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
