@@ -476,6 +476,28 @@ export default function App() {
     }
   }, [report, startEmbedPoll]);
 
+  // ---- seed genres from MusicBrainz (uses artist/title tags) ----
+  const handleMbSeed = useCallback(async () => {
+    setBusy(true);
+    report("starting MusicBrainz seed…");
+    try {
+      const r = await api.mbSeed();
+      if (r.started) {
+        report("seeding genres from MusicBrainz…");
+        setJobKind("mbseed");
+        setJobNote(null);
+        setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+        startEmbedPoll();
+      } else {
+        report("MB seed not started (already running or nothing to do)");
+      }
+    } catch (e) {
+      report(`MB seed failed: ${errMsg(e)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }, [report, startEmbedPoll]);
+
   // ---- open-vocab search ----
   const handleSearch = useCallback(
     async (query: string, threshold: number | null) => {
@@ -743,6 +765,7 @@ export default function App() {
         onTag={handleTag}
         onDeep={handleDeep}
         onFuse={handleFuse}
+        onMbSeed={handleMbSeed}
         onSuggest={handleSuggest}
         onAuto={handleAuto}
       />

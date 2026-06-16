@@ -12,6 +12,7 @@ const JOB_VERB: Record<JobKind, string> = {
   tag: "tagging",
   deep: "deep-analyzing",
   fuse: "fusing",
+  mbseed: "seeding from MusicBrainz",
   suggest: "classifying",
   auto: "auto-sorting",
 };
@@ -24,6 +25,7 @@ interface TopBarProps {
   onTag: () => void;
   onDeep: () => void;
   onFuse: () => void;
+  onMbSeed: () => void;
   onSuggest: () => void;
   onAuto: () => void;
   /** Live embed progress; null when no embed has run / not running. */
@@ -44,6 +46,7 @@ export function TopBar({
   onTag,
   onDeep,
   onFuse,
+  onMbSeed,
   onSuggest,
   onAuto,
   progress,
@@ -221,6 +224,14 @@ export function TopBar({
             title="Fuse the sound embedding with tags, CLAP and tempo for sharper grouping"
           >
             Fuse
+          </button>
+          <button
+            className="btn btn--accent"
+            onClick={onMbSeed}
+            disabled={busy || embedRunning}
+            title="Auto-create genres from MusicBrainz using your tracks' artist/title tags (network)"
+          >
+            MB genres
           </button>
           <button
             className="btn btn--accent"
