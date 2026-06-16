@@ -191,15 +191,19 @@ class Engine:
 
     def understanding(self, track_id: int) -> Optional[dict]:
         from mgc.tagging import get_audioset_labels, top_tags
+        from mgc.understanding import compile_record
         u = self.store.get_understanding(track_id)
-        if not u:
+        if not u or u.get("audioset") is None:
             return None
         labels = get_audioset_labels() or []
-        tags = top_tags(u["audioset"], labels) if (u.get("audioset") is not None and labels) else []
+        vec = u["audioset"]
+        tags = top_tags(vec, labels) if labels else []
+        analysis = self.store.get_analysis(track_id) or {}
+        rec = compile_record(vec, labels, analysis=analysis) if labels else {}
         return {"track_id": track_id, "top_tags": tags,
-                "instruments": u.get("instruments"), "vocal": u.get("vocal"),
-                "mood": u.get("mood"), "caption": u.get("caption"),
-                "tags_canonical": u.get("tags_canonical"), "deep_done": u.get("deep_done")}
+                "instruments": rec.get("instruments"), "vocal": rec.get("vocal"),
+                "mood": rec.get("mood"), "caption": rec.get("caption"),
+                "tags_canonical": rec.get("tags_canonical"), "deep_done": u.get("deep_done")}
 
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
