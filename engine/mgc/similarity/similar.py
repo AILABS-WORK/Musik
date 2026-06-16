@@ -76,3 +76,61 @@ def nearest_to_vector(
     ids, mat = store.load_matrix(model)
     excl = set(exclude) if exclude else set()
     return _rank(vector, ids, mat, n, exclude=excl)
+
+
+def radio_queue(
+    store, seed_track_id: int, model: str, n: int = 20
+) -> list[int]:
+    """Build a "radio" play order as a greedy nearest-neighbour walk.
+
+    Starting at ``seed_track_id``, repeatedly step to the cosine-nearest track
+    that has not been queued yet, using the *current* track as the query each
+    step. This traces a path through embedding space (so neighbours of the seed
+    play before far-away clusters), rather than a flat ranking around the seed.
+
+    The seed is included as the FIRST element of the returned list. The result
+    has length up to ``n`` (including the seed); it is shorter only when fewer
+    than ``n`` tracks with a ``model`` embedding exist. Returns an empty list if
+    the seed has no embedding for ``model``.
+    """
+    if n <= 0:
+        return []
+
+    ids, mat = store.load_matrix(model)
+    if seed_track_id not in ids:
+        return []
+
+    normed = _normalize_rows(mat.astype(np.float32))
+    index = {tid: i for i, tid in enumerate(ids)}
+
+    queue: list[int] = [seed_track_id]
+    queued: set = {seed_track_id}
+    current = seed_track_id
+
+    while len(queue) < n and len(queued) < len(ids):
+        q = normed[index[current]]
+        if float(np.linalg.norm(q)) == 0.0:
+            # Degenerate current vector: fall back to any remaining track.
+            remaining = [tid for tid in ids if tid not in queued]
+            if not remaining:
+                break
+            nxt = remaining[0]
+        else:
+            scores = normed @ q
+            best_tid = None
+            best_score = -np.inf
+            for tid in ids:
+                if tid in queued:
+                    continue
+                s = float(scores[index[tid]])
+                if s > best_score:
+                    best_score = s
+                    best_tid = tid
+            if best_tid is None:
+                break
+            nxt = best_tid
+        queue.append(nxt)
+        queued.add(nxt)
+        current = nxt
+
+    return queue

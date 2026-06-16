@@ -156,3 +156,25 @@ class Engine:
     def project(self, method: str = "pca"):
         from mgc.eval.validate import project_embeddings
         return project_embeddings(self.store, self.model, method=method)
+
+    # ---- analysis / set-builder / identify / radio -------------------------
+    def analyze_all(self, progress=None) -> int:
+        from mgc.analysis import analyze_all
+        return analyze_all(self.store, progress=progress)
+
+    def build_set(self, description: str, length: Optional[int] = None) -> dict:
+        from mgc.setbuilder.builder import build_set
+        return build_set(self.store, description, self.model, length=length)
+
+    def identify(self, path: str, n: int = 5) -> list:
+        from mgc.identify.identify import identify_in_library
+        return identify_in_library(self.store, path, self.model, n=n)
+
+    def radio(self, track_id: int, n: int = 20) -> list:
+        from mgc.similarity.similar import radio_queue
+        ids = radio_queue(self.store, track_id, self.model, n=n)
+        out = []
+        for tid in ids:
+            t = self.store.get_track(tid)
+            out.append({"track_id": tid, "name": Path(t.path).name if t else str(tid)})
+        return out

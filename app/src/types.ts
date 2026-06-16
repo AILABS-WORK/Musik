@@ -8,6 +8,9 @@ export interface Track {
   confidence: number | null;
   assignment_status: string | null;
   status: string;
+  bpm: number | null;
+  music_key: string | null;
+  energy: number | null;
 }
 
 export interface Genre {

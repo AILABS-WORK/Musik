@@ -154,6 +154,71 @@ def test_suggest_all_covers_embedded_tracks(tmp_store):
     assert res[t2][0].genre_id == gb
 
 
+def test_suggest_knn_top1_from_exemplars(tmp_store):
+    s = tmp_store
+    ga = s.upsert_genre(GenreNode(name="GenreA", level=LEVEL_GENRE))
+    gb = s.upsert_genre(GenreNode(name="GenreB", level=LEVEL_GENRE))
+
+    # GenreA exemplars cluster near axis 0; GenreB exemplars near axis 1.
+    a1 = _make_track(s, "ka1", np.array([1.0, 0.1, 0, 0, 0, 0, 0, 0], dtype=np.float32))
+    a2 = _make_track(s, "ka2", np.array([0.95, 0.0, 0.05, 0, 0, 0, 0, 0], dtype=np.float32))
+    b1 = _make_track(s, "kb1", np.array([0.1, 1.0, 0, 0, 0, 0, 0, 0], dtype=np.float32))
+    b2 = _make_track(s, "kb2", np.array([0.0, 0.95, 0.05, 0, 0, 0, 0, 0], dtype=np.float32))
+    s.add_exemplar(ga, a1)
+    s.add_exemplar(ga, a2)
+    s.add_exemplar(gb, b1)
+    s.add_exemplar(gb, b2)
+
+    # Query near GenreA's exemplars.
+    q = _make_track(s, "kq", np.array([1.0, 0.05, 0, 0, 0, 0, 0, 0], dtype=np.float32))
+
+    sugs = suggest(s, q, MODEL, top_k=3, threshold=0.35, method="knn")
+    assert sugs[0].genre_id == ga
+    assert sugs[0].genre_name == "GenreA"
+    assert sugs[0].method == "knn"
+    assert sugs[0].confidence > 0.35
+    # GenreB (other blob) ranks below GenreA.
+    by_name = {x.genre_name: x for x in sugs}
+    assert by_name["GenreA"].confidence > by_name["GenreB"].confidence
+
+
+def test_suggest_knn_below_threshold_returns_unknown(tmp_store):
+    s = tmp_store
+    ga = s.upsert_genre(GenreNode(name="GenreA", level=LEVEL_GENRE))
+    a1 = _make_track(s, "kbt1", _unit(0))
+    a2 = _make_track(s, "kbt2", _unit(0))
+    s.add_exemplar(ga, a1)
+    s.add_exemplar(ga, a2)
+
+    # Query orthogonal to the only genre's exemplars -> below threshold.
+    q = _make_track(s, "kbtq", _unit(5))
+    sugs = suggest(s, q, MODEL, top_k=3, threshold=0.35, method="knn")
+    assert len(sugs) == 1
+    assert sugs[0].genre_id is None
+    assert sugs[0].genre_name is None
+    assert sugs[0].method == "knn"
+    assert sugs[0].confidence < 0.35
+
+
+def test_suggest_all_knn_passthrough(tmp_store):
+    s = tmp_store
+    ga = s.upsert_genre(GenreNode(name="GenreA", level=LEVEL_GENRE))
+    gb = s.upsert_genre(GenreNode(name="GenreB", level=LEVEL_GENRE))
+    a1 = _make_track(s, "pa1", _unit(0))
+    b1 = _make_track(s, "pb1", _unit(1))
+    s.add_exemplar(ga, a1)
+    s.add_exemplar(gb, b1)
+    # Two queries, one near each blob.
+    q_a = _make_track(s, "pqa", _unit(0))
+    q_b = _make_track(s, "pqb", _unit(1))
+
+    res = suggest_all(s, MODEL, top_k=1, threshold=0.35, method="knn")
+    assert q_a in res and q_b in res
+    assert res[q_a][0].genre_id == ga
+    assert res[q_b][0].genre_id == gb
+    assert res[q_a][0].method == "knn"
+
+
 def test_ancestors_subgenre_chain(tmp_store):
     s = tmp_store
     subset = s.upsert_genre(GenreNode(name="Electronic", level=LEVEL_SUBSET))

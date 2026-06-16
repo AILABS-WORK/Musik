@@ -101,6 +101,9 @@ export function TrackTable({
                 />
               </th>
               <th className="col-name">Name</th>
+              <th className="col-bpm">BPM</th>
+              <th className="col-key">Key</th>
+              <th className="col-energy">Energy</th>
               <th className="col-genre">Genre</th>
               <th className="col-conf sortable" onClick={cycleSort}>
                 Confidence
@@ -132,6 +135,37 @@ export function TrackTable({
                     <div className="cell-name" title={t.path}>
                       {t.name}
                     </div>
+                  </td>
+                  <td className="col-bpm mono">
+                    {t.bpm !== null ? (
+                      Math.round(t.bpm)
+                    ) : (
+                      <span className="dash">—</span>
+                    )}
+                  </td>
+                  <td className="col-key mono">
+                    {t.music_key ? (
+                      t.music_key
+                    ) : (
+                      <span className="dash">—</span>
+                    )}
+                  </td>
+                  <td className="col-energy">
+                    {t.energy !== null ? (
+                      <div
+                        className="energy-bar"
+                        title={`energy ${t.energy.toFixed(2)}`}
+                      >
+                        <div
+                          className="energy-bar__fill"
+                          style={{
+                            width: `${Math.max(0, Math.min(1, t.energy)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span className="dash">—</span>
+                    )}
                   </td>
                   <td
                     className="col-genre"
@@ -200,7 +234,7 @@ export function TrackTable({
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={5}>
+                <td colSpan={8}>
                   <div className="hint">
                     {tracks.length === 0
                       ? "No tracks yet. Set a library path and hit Scan."

@@ -8,7 +8,9 @@ interface TopBarProps {
   busy: boolean;
   onScan: () => void;
   onEmbed: () => void;
+  onAnalyze: () => void;
   onSuggest: () => void;
+  onAuto: () => void;
   /** Live embed progress; null when no embed has run / not running. */
   progress: Progress | null;
   /** Bubble a status string (and error flag) up to the shared status bar. */
@@ -21,7 +23,9 @@ export function TopBar({
   busy,
   onScan,
   onEmbed,
+  onAnalyze,
   onSuggest,
+  onAuto,
   progress,
   report,
   onConfigLoaded,
@@ -155,10 +159,25 @@ export function TopBar({
         </button>
         <button
           className="btn btn--accent"
+          onClick={onAnalyze}
+          disabled={busy || embedRunning}
+        >
+          Analyze
+        </button>
+        <button
+          className="btn btn--accent"
           onClick={onSuggest}
           disabled={busy || embedRunning}
         >
           Suggest
+        </button>
+        <button
+          className="btn btn--go"
+          onClick={onAuto}
+          disabled={busy || embedRunning}
+          title="Embed → Analyze → Suggest, all in one"
+        >
+          Auto-sort
         </button>
       </div>
 

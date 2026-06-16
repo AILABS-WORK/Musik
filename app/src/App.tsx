@@ -12,6 +12,8 @@ import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
 import { ImportBar } from "./components/ImportBar";
+import { SetBuilder } from "./components/SetBuilder";
+import { IdentifyPanel } from "./components/IdentifyPanel";
 
 type MainView = "table" | "map";
 
@@ -37,6 +39,18 @@ export default function App() {
 
   const [progress, setProgress] = useState<Progress | null>(null);
   const embedPollRef = useRef<number | null>(null);
+
+  // ---- active play queue (set builder / radio) ----
+  const [queue, setQueue] = useState<number[]>([]);
+  const [queuePos, setQueuePos] = useState(0);
+  // keep latest queue/pos readable from the audio onEnded handler
+  const queueRef = useRef<number[]>([]);
+  const queuePosRef = useRef(0);
+  queueRef.current = queue;
+  queuePosRef.current = queuePos;
+
+  // guard against double-running the auto pipeline
+  const autoRunningRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -173,6 +187,67 @@ export default function App() {
     }
   }, [report, refreshAll]);
 
+  // ---- analyze (BPM / key / energy) — reuses the embed progress flow ----
+  const handleAnalyze = useCallback(async () => {
+    setBusy(true);
+    report("starting analysis…");
+    try {
+      const r = await api.analyze();
+      if (r.started) {
+        report("analyzing…");
+        setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+        startEmbedPoll();
+      } else {
+        report("analyze not started (already running or nothing to do)");
+      }
+    } catch (e) {
+      report(`analyze failed: ${errMsg(e)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }, [report, startEmbedPoll]);
+
+  // ---- one-click auto pipeline: embed → analyze → suggest ----
+  const waitForProgress = useCallback(async () => {
+    // Poll until the background job reports !running.
+    for (;;) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 600));
+      try {
+        const p = await api.progress();
+        setProgress(p);
+        if (!p.running) return;
+      } catch {
+        // transient failure — stop waiting rather than spin forever
+        return;
+      }
+    }
+  }, []);
+
+  const handleAuto = useCallback(async () => {
+    if (autoRunningRef.current) return;
+    autoRunningRef.current = true;
+    setBusy(true);
+    try {
+      report("auto: embedding…");
+      await api.embed();
+      await waitForProgress();
+      report("auto: analyzing…");
+      await api.analyze();
+      await waitForProgress();
+      report("auto: classifying…");
+      await api.suggest();
+      await refreshAll();
+      report("auto: done");
+    } catch (e) {
+      report(`auto-sort failed: ${errMsg(e)}`, true);
+    } finally {
+      stopEmbedPoll();
+      setProgress(null);
+      setBusy(false);
+      autoRunningRef.current = false;
+    }
+  }, [report, waitForProgress, refreshAll, stopEmbedPoll]);
+
   // ---- selection / checks ----
   const toggleCheck = useCallback((id: number) => {
     setChecked((prev) => {
@@ -226,6 +301,52 @@ export default function App() {
     [report],
   );
 
+  // ---- active play queue (set builder / radio) ----
+  const playQueue = useCallback(
+    (ids: number[]) => {
+      const list = ids.filter((id) => Number.isFinite(id));
+      if (list.length === 0) {
+        report("queue is empty", true);
+        return;
+      }
+      setQueue(list);
+      setQueuePos(0);
+      report(`queue · 1/${list.length}`);
+      play(list[0] as number);
+    },
+    [play, report],
+  );
+
+  // advance to the next queued track when the current one ends
+  const playNext = useCallback(() => {
+    const q = queueRef.current;
+    const next = queuePosRef.current + 1;
+    if (next < q.length) {
+      setQueuePos(next);
+      report(`queue · ${next + 1}/${q.length}`);
+      play(q[next] as number);
+    }
+  }, [play, report]);
+
+  const handleRadio = useCallback(
+    async (trackId: number) => {
+      report("tuning radio…");
+      try {
+        const r = await api.radio(trackId);
+        const ids = r.queue.map((q) => q.track_id);
+        if (ids.length === 0) {
+          report("radio returned no tracks", true);
+          return;
+        }
+        report(`radio · ${ids.length} tracks`);
+        playQueue(ids);
+      } catch (e) {
+        report(`radio failed: ${errMsg(e)}`, true);
+      }
+    },
+    [playQueue, report],
+  );
+
   // ---- create genre by example ----
   const createByExample = useCallback(
     async (args: { name: string; parentId: number | null; level: string }) => {
@@ -274,7 +395,9 @@ export default function App() {
         report={report}
         onScan={handleScan}
         onEmbed={handleEmbed}
+        onAnalyze={handleAnalyze}
         onSuggest={handleSuggest}
+        onAuto={handleAuto}
       />
 
       <div className="app__body">
@@ -333,6 +456,7 @@ export default function App() {
               items={similar}
               loading={similarLoading}
               onPlay={play}
+              onRadio={(id) => void handleRadio(id)}
             />
           )}
           {tab === "clusters" && (
@@ -343,6 +467,14 @@ export default function App() {
               refresh={refreshAll}
             />
           )}
+          {tab === "set" && (
+            <SetBuilder
+              report={report}
+              onPlayQueue={playQueue}
+              onPlay={play}
+            />
+          )}
+          {tab === "id" && <IdentifyPanel report={report} onPlay={play} />}
           {tab === "apply" && (
             <ApplyPanel report={report} onMutated={refreshAll} />
           )}
@@ -355,8 +487,22 @@ export default function App() {
         busy={busy || embedRunning}
       />
 
+      {/* subtle "up next" indicator while a queue is active */}
+      {queue.length > 0 && queuePos + 1 < queue.length && (
+        <div className="upnext" title="up next in queue">
+          up next ·{" "}
+          <span className="upnext__name">
+            {tracks.find((t) => t.id === queue[queuePos + 1])?.name ??
+              `#${queue[queuePos + 1]}`}
+          </span>
+          <span className="upnext__pos">
+            {queuePos + 2}/{queue.length}
+          </span>
+        </div>
+      )}
+
       {/* one shared audio element used by every play button */}
-      <audio ref={audioRef} />
+      <audio ref={audioRef} onEnded={playNext} />
     </div>
   );
 }

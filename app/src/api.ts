@@ -45,6 +45,16 @@ export const api = {
   cluster: (minSize = 2) => req<any[]>("POST", `/api/cluster?min_size=${minSize}`),
   project: (method = "pca") => req<{ points: any[] }>("GET", `/api/project?method=${method}`),
 
+  analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
+  buildSet: (description: string, length?: number | null) =>
+    req<{ track_ids: number[]; names: string[]; arc: number[]; reasons: string[]; parsed: any }>(
+      "POST", "/api/set-build", { description, length: length ?? null }),
+  identify: (path: string, n = 5) =>
+    req<{ matches: { track_id: number; name: string; score: number }[] }>(
+      "POST", "/api/identify", { path, n }),
+  radio: (trackId: number, n = 20) =>
+    req<{ queue: { track_id: number; name: string }[] }>("GET", `/api/radio/${trackId}?n=${n}`),
+
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),
   organize: (dry_run: boolean) =>

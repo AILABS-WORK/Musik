@@ -78,6 +78,16 @@ CREATE TABLE IF NOT EXISTS actions_log (
     ts          TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS analysis (
+    track_id     INTEGER PRIMARY KEY,
+    bpm          REAL,
+    music_key    TEXT,
+    energy       REAL,          -- 0..1 perceived intensity
+    danceability REAL,          -- 0..1
+    extra        TEXT,          -- JSON for anything else
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_genres_parent ON genres(parent_id);
 CREATE INDEX IF NOT EXISTS idx_exemplars_genre ON exemplars(genre_id);
 CREATE INDEX IF NOT EXISTS idx_actions_status ON actions_log(status);

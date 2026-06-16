@@ -6,6 +6,8 @@ interface SimilarPanelProps {
   items: SimilarItem[];
   loading: boolean;
   onPlay: (id: number) => void;
+  /** Start an auto-advancing radio queue seeded from the selected track. */
+  onRadio: (id: number) => void;
 }
 
 export function SimilarPanel({
@@ -13,6 +15,7 @@ export function SimilarPanel({
   items,
   loading,
   onPlay,
+  onRadio,
 }: SimilarPanelProps) {
   if (!selected) {
     return (
@@ -24,7 +27,16 @@ export function SimilarPanel({
 
   return (
     <div className="panel-section">
-      <h3>Similar to “{selected.name}”</h3>
+      <div className="apply-group__head">
+        <span className="apply-group__title">Similar to “{selected.name}”</span>
+        <button
+          className="btn btn--accent btn--xs"
+          onClick={() => onRadio(selected.id)}
+          title="Auto-advancing radio seeded from this track"
+        >
+          📻 Radio
+        </button>
+      </div>
       {loading ? (
         <div className="hint">Loading…</div>
       ) : items.length === 0 ? (

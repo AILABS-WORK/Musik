@@ -324,3 +324,40 @@ class Store:
     def set_action_status(self, action_id: int, status: str) -> None:
         self.conn.execute("UPDATE actions_log SET status=? WHERE id=?", (status, action_id))
         self.conn.commit()
+
+    # ---- analysis (bpm / key / energy) -------------------------------------
+    def save_analysis(self, track_id: int, bpm: Optional[float] = None,
+                      music_key: Optional[str] = None, energy: Optional[float] = None,
+                      danceability: Optional[float] = None, extra: Optional[dict] = None) -> None:
+        self.conn.execute(
+            """INSERT INTO analysis(track_id, bpm, music_key, energy, danceability, extra)
+               VALUES(?,?,?,?,?,?)
+               ON CONFLICT(track_id) DO UPDATE SET
+                 bpm=excluded.bpm, music_key=excluded.music_key, energy=excluded.energy,
+                 danceability=excluded.danceability, extra=excluded.extra""",
+            (track_id, bpm, music_key, energy, danceability,
+             json.dumps(extra) if extra else None),
+        )
+        self.conn.commit()
+
+    def get_analysis(self, track_id: int) -> Optional[dict]:
+        row = self.conn.execute("SELECT * FROM analysis WHERE track_id=?", (track_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["extra"] = json.loads(d["extra"]) if d["extra"] else {}
+        return d
+
+    def has_analysis(self, track_id: int) -> bool:
+        return self.conn.execute(
+            "SELECT 1 FROM analysis WHERE track_id=?", (track_id,)
+        ).fetchone() is not None
+
+    def load_analysis(self) -> dict[int, dict]:
+        """All analysis rows as {track_id: {bpm, music_key, energy, danceability, extra}}."""
+        out: dict[int, dict] = {}
+        for row in self.conn.execute("SELECT * FROM analysis").fetchall():
+            d = dict(row)
+            d["extra"] = json.loads(d["extra"]) if d["extra"] else {}
+            out[d["track_id"]] = d
+        return out

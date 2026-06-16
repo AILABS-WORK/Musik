@@ -65,6 +65,16 @@ class ImportIn(BaseModel):
     embed: bool = True        # auto-embed the newly added tracks in the background
 
 
+class SetBuildIn(BaseModel):
+    description: str
+    length: Optional[int] = None
+
+
+class IdentifyIn(BaseModel):
+    path: str
+    n: int = 5
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -73,10 +83,14 @@ def _track_dict(engine: Engine, t) -> dict:
         genre_name = g.name if g else None
         confidence = row["confidence"]
         status = row["status"]
+    a = engine.store.get_analysis(t.id)
     return {
         "id": t.id, "name": Path(t.path).name, "path": t.path, "fmt": t.fmt,
         "duration": t.duration, "genre": genre_name, "confidence": confidence,
         "assignment_status": status, "status": t.status,
+        "bpm": a["bpm"] if a else None,
+        "music_key": a["music_key"] if a else None,
+        "energy": a["energy"] if a else None,
     }
 
 
@@ -332,6 +346,54 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def seed(body: SeedIn):
         with app.state.lock:
             return {"seeded": eng().seed_taxonomy(body.refs_dir)}
+
+    # ---- analysis / set-builder / identify / radio -------------------------
+    def start_analysis() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            from mgc.analysis import analyze_all
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="analyzing…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                with app.state.lock:
+                    analyze_all(eng().store, progress=prog)
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/analyze")
+    def analyze():
+        """Compute BPM / key / energy for tracks that lack it (background)."""
+        return {"started": start_analysis()}
+
+    @app.post("/api/set-build")
+    def set_build(body: SetBuildIn):
+        with app.state.lock:
+            res = eng().build_set(body.description, length=body.length)
+            res["names"] = [
+                (lambda t: Path(t.path).name if t else str(tid))(eng().store.get_track(tid))
+                for tid in res.get("track_ids", [])
+            ]
+            return res
+
+    @app.post("/api/identify")
+    def identify(body: IdentifyIn):
+        with app.state.lock:
+            return {"matches": eng().identify(body.path, n=body.n)}
+
+    @app.get("/api/radio/{track_id}")
+    def radio(track_id: int, n: int = 20):
+        with app.state.lock:
+            return {"queue": eng().radio(track_id, n=n)}
 
     return app
 
