@@ -9,6 +9,7 @@ interface TopBarProps {
   onScan: () => void;
   onEmbed: () => void;
   onAnalyze: () => void;
+  onTag: () => void;
   onSuggest: () => void;
   onAuto: () => void;
   /** Live embed progress; null when no embed has run / not running. */
@@ -24,6 +25,7 @@ export function TopBar({
   onScan,
   onEmbed,
   onAnalyze,
+  onTag,
   onSuggest,
   onAuto,
   progress,
@@ -163,6 +165,14 @@ export function TopBar({
           disabled={busy || embedRunning}
         >
           Analyze
+        </button>
+        <button
+          className="btn btn--accent"
+          onClick={onTag}
+          disabled={busy || embedRunning}
+          title="Compute AudioSet-527 sound tags in the background"
+        >
+          Tag
         </button>
         <button
           className="btn btn--accent"

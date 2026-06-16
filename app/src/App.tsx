@@ -12,6 +12,7 @@ import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
 import { ImportBar } from "./components/ImportBar";
+import { SearchBar } from "./components/SearchBar";
 import { SetBuilder } from "./components/SetBuilder";
 import { IdentifyPanel } from "./components/IdentifyPanel";
 import { MixPanel } from "./components/MixPanel";
@@ -40,6 +41,16 @@ export default function App() {
 
   const [progress, setProgress] = useState<Progress | null>(null);
   const embedPollRef = useRef<number | null>(null);
+
+  // ---- open-vocab search ----
+  const [searchResults, setSearchResults] = useState<
+    { track_id: number; score: number }[] | null
+  >(null);
+  const [searchMeta, setSearchMeta] = useState<{
+    method: string;
+    matched_label?: string | null;
+    note?: string;
+  } | null>(null);
 
   // ---- active play queue (set builder / radio) ----
   const [queue, setQueue] = useState<number[]>([]);
@@ -207,6 +218,54 @@ export default function App() {
       setBusy(false);
     }
   }, [report, startEmbedPoll]);
+
+  // ---- tag (AudioSet-527 sound tags) — reuses the embed progress flow ----
+  const handleTag = useCallback(async () => {
+    setBusy(true);
+    report("starting tagging…");
+    try {
+      const r = await api.tag();
+      if (r.started) {
+        report("tagging…");
+        setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+        startEmbedPoll();
+      } else {
+        report("tag not started (already running or nothing to do)");
+      }
+    } catch (e) {
+      report(`tag failed: ${errMsg(e)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }, [report, startEmbedPoll]);
+
+  // ---- open-vocab search ----
+  const handleSearch = useCallback(
+    async (query: string, threshold: number | null) => {
+      if (!query.trim()) {
+        setSearchResults(null);
+        setSearchMeta(null);
+        return;
+      }
+      report(`searching “${query.trim()}”…`);
+      try {
+        const r = await api.search(query, threshold);
+        setSearchResults(
+          r.results.map((x) => ({ track_id: x.track_id, score: x.score })),
+        );
+        setSearchMeta({ method: r.method, matched_label: r.matched_label, note: r.note });
+        report(`search · ${r.results.length} result(s)`);
+      } catch (e) {
+        report(`search failed: ${errMsg(e)}`, true);
+      }
+    },
+    [report],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchResults(null);
+    setSearchMeta(null);
+  }, []);
 
   // ---- one-click auto pipeline: embed → analyze → suggest ----
   const waitForProgress = useCallback(async () => {
@@ -388,6 +447,15 @@ export default function App() {
   const checkedIds = Array.from(checked);
   const embedRunning = progress?.running ?? false;
 
+  // When a search is active, show its results in result order; otherwise
+  // show all tracks. Map each result id to its Track, dropping any misses.
+  const displayedTracks: Track[] =
+    searchResults === null
+      ? tracks
+      : searchResults
+          .map((r) => tracks.find((t) => t.id === r.track_id))
+          .filter((t): t is Track => t !== undefined);
+
   return (
     <div className="app">
       <TopBar
@@ -397,12 +465,20 @@ export default function App() {
         onScan={handleScan}
         onEmbed={handleEmbed}
         onAnalyze={handleAnalyze}
+        onTag={handleTag}
         onSuggest={handleSuggest}
         onAuto={handleAuto}
       />
 
       <div className="app__body">
         <main className="app__main">
+          <SearchBar
+            onSearch={(q, t) => void handleSearch(q, t)}
+            onClear={handleClearSearch}
+            meta={searchMeta}
+            active={searchResults !== null}
+            count={displayedTracks.length}
+          />
           <ImportBar onImport={(p) => void handleImport(p)} report={report} />
           <div className="viewtoggle">
             <div className="seg">
@@ -421,19 +497,34 @@ export default function App() {
             </div>
           </div>
           {view === "table" ? (
-            <TrackTable
-              tracks={tracks}
-              genres={genres}
-              checked={checked}
-              selectedId={selectedId}
-              onToggleCheck={toggleCheck}
-              onToggleAll={toggleAll}
-              onSelect={selectTrack}
-              onPlay={play}
-              onConfirm={(trackId, genreId) => {
-                void confirmGenre(trackId, genreId);
-              }}
-            />
+            <>
+              {searchResults !== null && (
+                <div className="search-banner">
+                  showing{" "}
+                  <strong>{displayedTracks.length}</strong> result
+                  {displayedTracks.length === 1 ? "" : "s"} for your search
+                  <button
+                    className="btn btn--xs search-banner__clear"
+                    onClick={handleClearSearch}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+              <TrackTable
+                tracks={displayedTracks}
+                genres={genres}
+                checked={checked}
+                selectedId={selectedId}
+                onToggleCheck={toggleCheck}
+                onToggleAll={toggleAll}
+                onSelect={selectTrack}
+                onPlay={play}
+                onConfirm={(trackId, genreId) => {
+                  void confirmGenre(trackId, genreId);
+                }}
+              />
+            </>
           ) : (
             <MapView
               tracks={tracks}
