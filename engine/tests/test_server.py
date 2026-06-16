@@ -76,3 +76,31 @@ def test_server_full_flow(tmp_path):
 
     assert client.get(f"/api/audio/{aids[0]}").status_code == 200
     assert client.get("/api/review").status_code == 200
+
+
+def test_import_paths(tmp_path):
+    """Drag-and-drop ingestion: /api/import registers files/folders + auto-embeds."""
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    f1 = _flac(drop / "x.flac", 200, harmonics=(1, 2))
+    f2 = _flac(drop / "y.flac", 3000)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    cfg = Config(db_path=str(tmp_path / "db2.sqlite"), library_root=str(empty),
+                 active_model="baseline")
+    client = TestClient(create_app(cfg))
+
+    # import a FOLDER path -> recurses + filters to audio
+    r = client.post("/api/import", json={"paths": [str(drop)]}).json()
+    assert r["added"] == 2 and r["files_seen"] == 2 and r["embedding"] is True
+    for _ in range(150):
+        p = client.get("/api/progress").json()
+        if not p["running"] and p["done"] >= 2:
+            break
+        time.sleep(0.1)
+    assert len(client.get("/api/tracks").json()) == 2
+
+    # re-importing the same files (by file path) is idempotent
+    r2 = client.post("/api/import", json={"paths": [str(f1), str(f2)]}).json()
+    assert r2["added"] == 0

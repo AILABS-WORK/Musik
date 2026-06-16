@@ -999,3 +999,67 @@ table.tracks tbody tr.selected {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ===== import bar + drag-drop overlay ===== */
+.importbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.importbar__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.importbar__label {
+  width: 116px;
+  flex: 0 0 116px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.importbar__input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 9px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.importbar__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.importbar__select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.dropoverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 15, 18, 0.82);
+  border: 3px dashed var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: none;
+}
+.dropoverlay__inner {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}

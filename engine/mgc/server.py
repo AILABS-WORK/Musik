@@ -60,6 +60,11 @@ class SeedIn(BaseModel):
     refs_dir: str
 
 
+class ImportIn(BaseModel):
+    paths: list[str]          # files and/or folders (folders are walked recursively)
+    embed: bool = True        # auto-embed the newly added tracks in the background
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -125,10 +130,11 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             ids = eng().scan()
             return {"scanned": len(ids), "total": eng().store.count_tracks()}
 
-    @app.post("/api/embed")
-    def embed(force: bool = False):
+    def start_embedding(force: bool = False) -> bool:
+        """Embed all tracks on a background thread (lock per-track). Returns False
+        if an embed run is already in progress."""
         if app.state.progress["running"]:
-            return {"started": False, "reason": "already running"}
+            return False
 
         def worker():
             from mgc.embed.cache import embed_track
@@ -152,7 +158,60 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             p["running"] = False
 
         threading.Thread(target=worker, daemon=True).start()
-        return {"started": True}
+        return True
+
+    @app.post("/api/embed")
+    def embed(force: bool = False):
+        return {"started": start_embedding(force)}
+
+    @app.post("/api/import")
+    def import_paths(body: ImportIn):
+        """Register dropped files/folders (folders walked recursively, filtered to
+        supported audio), then auto-embed in the background. The organize step
+        later copies/moves them into the configured Organized-library destination."""
+        import os
+
+        import soundfile as sf
+
+        from mgc.ingest.scanner import content_hash, read_tags
+        from mgc.types import Track
+
+        exts = {x.lower() for x in app.state.config.extensions}
+        files: list[str] = []
+        for raw in body.paths:
+            p = raw.strip().strip('"')
+            if os.path.isdir(p):
+                for root, _dirs, names in os.walk(p):
+                    for n in names:
+                        if os.path.splitext(n)[1].lower() in exts:
+                            files.append(os.path.join(root, n))
+            elif os.path.isfile(p) and os.path.splitext(p)[1].lower() in exts:
+                files.append(p)
+
+        with app.state.lock:
+            e = eng()
+            before = e.store.count_tracks()
+            for f in files:
+                try:
+                    info = None
+                    try:
+                        info = sf.info(f)
+                    except Exception:
+                        pass
+                    e.store.upsert_track(Track(
+                        path=f, content_hash=content_hash(f),
+                        fmt=os.path.splitext(f)[1].lstrip(".").lower(),
+                        duration=getattr(info, "duration", None),
+                        sample_rate=getattr(info, "samplerate", None),
+                        existing_tags=read_tags(f),
+                    ))
+                except Exception:
+                    pass
+            added = e.store.count_tracks() - before
+
+        embedding = start_embedding(force=False) if (body.embed and files) else False
+        return {"added": added, "files_seen": len(files),
+                "total": eng().store.count_tracks(), "embedding": embedding}
 
     @app.get("/api/progress")
     def progress():

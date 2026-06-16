@@ -11,6 +11,7 @@ import { SimilarPanel } from "./components/SimilarPanel";
 import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
+import { ImportBar } from "./components/ImportBar";
 
 type MainView = "table" | "map";
 
@@ -135,6 +136,29 @@ export default function App() {
     }
   }, [report, startEmbedPoll]);
 
+  const handleImport = useCallback(
+    async (paths: string[]) => {
+      if (!paths.length) return;
+      setBusy(true);
+      report(`importing ${paths.length} path(s)…`);
+      try {
+        const r = await api.importPaths(paths);
+        report(`imported ${r.added} new track(s) from ${r.files_seen} file(s)`);
+        if (r.embedding) {
+          setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+          startEmbedPoll();
+        } else {
+          await refreshAll();
+        }
+      } catch (e) {
+        report(`import failed: ${errMsg(e)}`, true);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [report, startEmbedPoll, refreshAll],
+  );
+
   const handleSuggest = useCallback(async () => {
     setBusy(true);
     report("suggesting genres…");
@@ -255,6 +279,7 @@ export default function App() {
 
       <div className="app__body">
         <main className="app__main">
+          <ImportBar onImport={(p) => void handleImport(p)} report={report} />
           <div className="viewtoggle">
             <div className="seg">
               <button

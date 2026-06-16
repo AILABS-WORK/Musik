@@ -23,6 +23,10 @@ export const api = {
 
   scan: () => req<{ scanned: number; total: number }>("POST", "/api/scan"),
   embed: (force = false) => req<{ started: boolean }>("POST", `/api/embed?force=${force}`),
+  /** Import dropped files/folders (absolute paths) and auto-embed them. */
+  importPaths: (paths: string[], embed = true) =>
+    req<{ added: number; files_seen: number; total: number; embedding: boolean }>(
+      "POST", "/api/import", { paths, embed }),
   progress: () => req<Progress>("GET", "/api/progress"),
 
   tracks: () => req<Track[]>("GET", "/api/tracks"),
