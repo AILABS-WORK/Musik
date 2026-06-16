@@ -10,6 +10,7 @@ import type { SideTab } from "./components/SidePanel";
 import { GenrePanel } from "./components/GenrePanel";
 import { SimilarPanel } from "./components/SimilarPanel";
 import { SongPanel } from "./components/SongPanel";
+import { WavePanel } from "./components/WavePanel";
 import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
@@ -849,6 +850,12 @@ export default function App() {
             <SongPanel
               track={tracks.find((t) => t.id === selectedId) ?? null}
               onPlay={play}
+            />
+          )}
+          {tab === "parts" && (
+            <WavePanel
+              track={tracks.find((t) => t.id === selectedId) ?? null}
+              report={report}
             />
           )}
           {tab === "clusters" && (

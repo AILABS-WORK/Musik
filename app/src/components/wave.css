@@ -1,0 +1,223 @@
+/* ===== Parts / waveform panel ===== */
+.wave {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wave-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wave-head__name {
+  flex: 1 1 auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- canvas + selection overlay ---- */
+.wave-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  background: #0b0d12;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.wave-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* a faint state message centered over the canvas (loading / error / empty) */
+.wave-canvas-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.wave-canvas-state--error {
+  color: var(--red);
+}
+
+/* ---- selection time readout ---- */
+.wave-times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  min-height: 16px;
+}
+
+.wave-times__sel {
+  color: var(--accent);
+}
+
+.wave-times__dur {
+  color: var(--text-faint);
+}
+
+.wave-times__hint {
+  color: var(--text-faint);
+}
+
+/* ---- transport ---- */
+.wave-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- label + note inputs ---- */
+.wave-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.wave-input {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 6px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.wave-input:focus {
+  border-color: var(--accent);
+}
+
+.wave-input::placeholder {
+  color: var(--text-faint);
+}
+
+.wave-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- index control ---- */
+.wave-index {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wave-index__note {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+/* ---- match results ---- */
+.wave-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wave-matches__head {
+  margin: 2px 0;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.wave-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.wave-match:hover {
+  border-color: var(--border-2);
+}
+
+.wave-match__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wave-match__name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wave-match__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wave-match__bar {
+  flex: 1 1 auto;
+  height: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.wave-match__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.wave-match__at {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.wave-match__play {
+  flex: 0 0 auto;
+}
