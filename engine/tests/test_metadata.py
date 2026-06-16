@@ -88,3 +88,24 @@ def test_bundled_genre_graph_loads():
     assert g.has("deep house") and g.has("techno")
     rel = {r["genre"] for r in g.related("house")}
     assert "deep house" in rel and "tech house" in rel  # curated edges work
+
+
+def test_dump_build_graph_extracts_edges():
+    from mgc.metadata.dump import build_graph
+
+    genre = [["1", "g1", "house"], ["2", "g2", "deep house"], ["3", "g3", "techno"]]
+    # link_type: id, parent, child_order, gid, e_type0, e_type1, name, ...
+    link_type = [
+        ["10", "", "0", "lt1", "genre", "genre", "subgenre", "d"],
+        ["11", "", "0", "lt2", "genre", "genre", "fusion", "d"],
+        ["99", "", "0", "lt3", "artist", "artist", "member of", "d"],
+    ]
+    link = [["100", "10"], ["101", "11"], ["102", "99"]]
+    # l_genre_genre: id, link, entity0(child), entity1(parent), ...
+    lgg = [["1000", "100", "2", "1"], ["1001", "101", "3", "1"]]
+
+    g = build_graph(genre, link_type, link, lgg)
+    assert set(g["genres"]) == {"house", "deep house", "techno"}
+    edges = {(e["from"], e["to"], e["rel"]) for e in g["edges"]}
+    assert ("deep house", "house", "subgenre") in edges
+    assert ("techno", "house", "fusion") in edges

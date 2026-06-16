@@ -259,6 +259,36 @@ class Engine:
         from mgc.metadata import get_graph
         return get_graph().related(genre, limit=n)
 
+    # ---- segment-level similarity (waveform region -> matching parts) ------
+    def index_segments(self, progress=None) -> int:
+        from mgc.segments import build_segment_index
+        return build_segment_index(self.store, self.model, progress=progress)
+
+    def search_by_segment(self, track_id: int, start: float, end: float, n: int = 20) -> list:
+        from mgc.segments import embed_segment, find_similar_segments
+        track = self.store.get_track(track_id)
+        if not track:
+            return []
+        q = embed_segment(track.path, start, end, self.model)
+        return find_similar_segments(self.store, q, self.model, n=n, exclude_track_id=track_id)
+
+    def save_segment(self, track_id: int, start: float, end: float, label: Optional[str] = None,
+                     note: Optional[str] = None, genre_id: Optional[int] = None) -> dict:
+        from mgc.segments import embed_segment
+        track = self.store.get_track(track_id)
+        if not track:
+            return {"ok": False, "error": "no such track"}
+        q = embed_segment(track.path, start, end, self.model)
+        sid = self.store.save_segment_exemplar(track_id, self.model, start, end, q,
+                                               label=label, note=note, genre_id=genre_id)
+        return {"ok": True, "segment_id": sid}
+
+    def list_segments(self, genre_id: Optional[int] = None) -> list:
+        rows = self.store.get_segment_exemplars(genre_id)
+        for r in rows:
+            r.pop("vector", None)  # don't ship the raw vector
+        return rows
+
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
         ids = radio_queue(self.store, track_id, self.classify_model, n=n)

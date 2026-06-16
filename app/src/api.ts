@@ -86,6 +86,16 @@ export const api = {
   relatedGenres: (genre: string, n = 25) =>
     req<{ related: { genre: string; weight: number }[] }>(
       "GET", `/api/genre/related?genre=${encodeURIComponent(genre)}&n=${n}`),
+  // ---- segment-level similarity (waveform region -> matching parts) ----
+  segmentIndex: () => req<{ started: boolean }>("POST", "/api/segment/index"),
+  segmentSearch: (track_id: number, start: number, end: number, n = 20) =>
+    req<{ matches: { track_id: number; name: string; score: number; start: number; end: number }[] }>(
+      "POST", "/api/segment/search", { track_id, start, end, n }),
+  segmentSave: (b: { track_id: number; start: number; end: number; label?: string; note?: string; genre_id?: number | null }) =>
+    req<{ ok: boolean; segment_id?: number }>("POST", "/api/segment/save", b),
+  segments: (genreId?: number) =>
+    req<{ segments: { id: number; track_id: number; start: number; end: number; label: string | null; note: string | null }[] }>(
+      "GET", `/api/segments${genreId != null ? `?genre_id=${genreId}` : ""}`),
 
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),

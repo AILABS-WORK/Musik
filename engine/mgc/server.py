@@ -109,6 +109,22 @@ class MBLookupIn(BaseModel):
     title: Optional[str] = None
 
 
+class SegmentSearchIn(BaseModel):
+    track_id: int
+    start: float
+    end: float
+    n: int = 20
+
+
+class SegmentSaveIn(BaseModel):
+    track_id: int
+    start: float
+    end: float
+    label: Optional[str] = None
+    note: Optional[str] = None
+    genre_id: Optional[int] = None
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -643,6 +659,52 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def genre_related(genre: str, n: int = 25):
         """Closely-related genres from the MusicBrainz genre graph (subgenre/fusion)."""
         return {"related": eng().related_genres(genre, n=n)}
+
+    # ---- segment-level similarity (waveform region -> matching parts) ------
+    def start_segment_index() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="indexing segments…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                with app.state.lock:
+                    n = eng().index_segments(progress=prog)
+                p["last"] = f"indexed {n} tracks for segment search"
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/segment/index")
+    def segment_index():
+        """Build the per-window segment index for 'find this part elsewhere' (background)."""
+        return {"started": start_segment_index()}
+
+    @app.post("/api/segment/search")
+    def segment_search(body: SegmentSearchIn):
+        """Find tracks containing a part that sounds like [start,end] of a track."""
+        with app.state.lock:
+            return {"matches": eng().search_by_segment(body.track_id, body.start, body.end, n=body.n)}
+
+    @app.post("/api/segment/save")
+    def segment_save(body: SegmentSaveIn):
+        """Label a region ('this is the electroclash cowbell') as a segment exemplar."""
+        with app.state.lock:
+            return eng().save_segment(body.track_id, body.start, body.end,
+                                      label=body.label, note=body.note, genre_id=body.genre_id)
+
+    @app.get("/api/segments")
+    def segments_list(genre_id: Optional[int] = None):
+        with app.state.lock:
+            return {"segments": eng().list_segments(genre_id)}
 
     return app
 

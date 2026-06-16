@@ -406,6 +406,67 @@ class Store:
         ).fetchone()
         return row is not None
 
+    # ---- segment index + labeled segment exemplars ------------------------
+    def clear_segment_index(self, model: str, track_id: Optional[int] = None) -> None:
+        if track_id is None:
+            self.conn.execute("DELETE FROM segment_embeddings WHERE model=?", (model,))
+        else:
+            self.conn.execute("DELETE FROM segment_embeddings WHERE model=? AND track_id=?",
+                              (model, track_id))
+        self.conn.commit()
+
+    def save_segment_embedding(self, track_id: int, model: str, start: float,
+                               end: float, vector) -> None:
+        v = np.asarray(vector, dtype=np.float32).ravel()
+        self.conn.execute(
+            "INSERT INTO segment_embeddings(track_id, model, start, end, vector) VALUES(?,?,?,?,?)",
+            (track_id, model, float(start), float(end), v.tobytes()),
+        )
+        self.conn.commit()
+
+    def has_segment_index(self, model: str, track_id: int) -> bool:
+        return self.conn.execute(
+            "SELECT 1 FROM segment_embeddings WHERE model=? AND track_id=? LIMIT 1", (model, track_id)
+        ).fetchone() is not None
+
+    def load_segment_index(self, model: str) -> tuple[list[dict], np.ndarray]:
+        """Return ([{seg_id, track_id, start, end}], matrix[n, dims]) for ``model``."""
+        rows = self.conn.execute(
+            "SELECT id, track_id, start, end, vector FROM segment_embeddings WHERE model=? ORDER BY track_id, start",
+            (model,),
+        ).fetchall()
+        if not rows:
+            return [], np.zeros((0, 0), dtype=np.float32)
+        meta = [{"seg_id": r["id"], "track_id": r["track_id"], "start": r["start"], "end": r["end"]}
+                for r in rows]
+        mat = np.stack([blob_to_vec(r["vector"]) for r in rows]).astype(np.float32)
+        return meta, mat
+
+    def save_segment_exemplar(self, track_id: int, model: str, start: float, end: float,
+                              vector, label: Optional[str] = None, note: Optional[str] = None,
+                              genre_id: Optional[int] = None) -> int:
+        v = np.asarray(vector, dtype=np.float32).ravel()
+        cur = self.conn.execute(
+            """INSERT INTO segments(track_id, model, start, end, label, note, genre_id, vector)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (track_id, model, float(start), float(end), label, note, genre_id, v.tobytes()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get_segment_exemplars(self, genre_id: Optional[int] = None) -> list[dict]:
+        if genre_id is None:
+            rows = self.conn.execute("SELECT * FROM segments ORDER BY id DESC").fetchall()
+        else:
+            rows = self.conn.execute("SELECT * FROM segments WHERE genre_id=? ORDER BY id DESC",
+                                     (genre_id,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["vector"] = blob_to_vec(d["vector"])
+            out.append(d)
+        return out
+
     def load_audioset_matrix(self) -> tuple[list[int], np.ndarray]:
         """Return (track_ids, matrix[n, 527]) of stored AudioSet probability vectors."""
         rows = self.conn.execute(

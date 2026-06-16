@@ -102,6 +102,37 @@ CREATE TABLE IF NOT EXISTS understanding (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+-- per-window embeddings (the "segment index"): lets us find tracks that contain
+-- a part that sounds like a selected region of another track.
+CREATE TABLE IF NOT EXISTS segment_embeddings (
+    id        INTEGER PRIMARY KEY,
+    track_id  INTEGER NOT NULL,
+    model     TEXT NOT NULL,
+    start     REAL NOT NULL,
+    end       REAL NOT NULL,
+    vector    BLOB NOT NULL,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_segemb_model ON segment_embeddings(model);
+CREATE INDEX IF NOT EXISTS idx_segemb_track ON segment_embeddings(track_id, model);
+
+-- labeled segment exemplars: "this region of this track IS the electroclash
+-- cowbell" -> a sound-level fingerprint that can define/seed a subgenre.
+CREATE TABLE IF NOT EXISTS segments (
+    id         INTEGER PRIMARY KEY,
+    track_id   INTEGER NOT NULL,
+    model      TEXT NOT NULL,
+    start      REAL NOT NULL,
+    end        REAL NOT NULL,
+    label      TEXT,
+    note       TEXT,
+    genre_id   INTEGER,
+    vector     BLOB NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+    FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_genres_parent ON genres(parent_id);
 CREATE INDEX IF NOT EXISTS idx_exemplars_genre ON exemplars(genre_id);
 CREATE INDEX IF NOT EXISTS idx_actions_status ON actions_log(status);
