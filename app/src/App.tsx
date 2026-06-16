@@ -22,6 +22,7 @@ import { SelectionBar } from "./components/SelectionBar";
 import { EmptyState } from "./components/EmptyState";
 import { JobBanner } from "./components/JobBanner";
 import type { JobKind } from "./components/JobBanner";
+import { MobileRecord } from "./components/MobileRecord";
 
 type MainView = "table" | "map";
 
@@ -29,7 +30,21 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * Mobile companion mode: the phone-first "Record & Identify" view replaces the
+ * whole desktop UI when the URL asks for it (#/record or ?record=1 — the PWA
+ * start_url). Read once at module load so the desktop path is untouched.
+ */
+function wantsMobileRecord(): boolean {
+  if (typeof window === "undefined") return false;
+  const { hash, search } = window.location;
+  return hash === "#/record" || new URLSearchParams(search).has("record");
+}
+
 export default function App() {
+  // Computed once; mobile mode is a static URL decision, not reactive state.
+  const [mobileRecord] = useState(wantsMobileRecord);
+
   const [tracks, setTracks] = useState<Track[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -679,6 +694,12 @@ export default function App() {
           .filter((t): t is Track => t !== undefined);
 
   const libraryEmpty = tracks.length === 0 && searchResults === null;
+
+  // Phone-first companion: full-screen Record & Identify replaces the desktop
+  // UI when the URL requests it. Everything below is the unchanged desktop app.
+  if (mobileRecord) {
+    return <MobileRecord />;
+  }
 
   return (
     <div

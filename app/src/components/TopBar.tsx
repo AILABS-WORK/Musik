@@ -3,7 +3,7 @@ import type { Health, Progress } from "../types";
 import type { JobKind } from "./JobBanner";
 import { api } from "../api";
 
-const MODELS = ["baseline", "discogs", "mert", "clap"];
+const MODELS = ["baseline", "discogs", "mert", "muq", "clap"];
 
 /** Friendly present-tense verb for the compact top-bar progress chip. */
 const JOB_VERB: Record<JobKind, string> = {

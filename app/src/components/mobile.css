@@ -1,0 +1,432 @@
+/* ===== Musik — Record & Identify (phone-first mobile companion) =====
+ * Standalone full-screen view. Reuses the desktop palette (bg #0B0D12,
+ * accent teal #2dd4bf) but is its own layout — big touch targets, safe-area
+ * insets for notches, no dependence on styles.css class names.
+ */
+
+.mrec {
+  --m-bg: #0b0d12;
+  --m-bg-2: #11151c;
+  --m-panel: #151a22;
+  --m-border: #232a35;
+  --m-text: #e3e8ef;
+  --m-text-dim: #9aa3b3;
+  --m-text-faint: #69727f;
+  --m-accent: #2dd4bf;
+  --m-accent-2: #4ade80;
+  --m-red: #ef4444;
+
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #12191f 0%, transparent 55%),
+    radial-gradient(100% 70% at 50% 120%, #131822 0%, transparent 55%),
+    var(--m-bg);
+  color: var(--m-text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* safe-area insets for notches / home indicators */
+  padding:
+    env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* ---- header ---- */
+.mrec__header {
+  flex: 0 0 auto;
+  padding: 18px 20px 8px;
+}
+
+.mrec__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.mrec__logo {
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 18px rgba(45, 212, 191, 0.35);
+}
+
+.mrec__logo::first-letter {
+  color: var(--m-accent);
+}
+
+.mrec__tag {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--m-text-faint);
+  text-transform: uppercase;
+}
+
+/* ---- main / record area ---- */
+.mrec__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 12px 20px 24px;
+  overflow-y: auto;
+}
+
+/* big circular record button */
+.mrec__btn {
+  position: relative;
+  flex: 0 0 auto;
+  width: min(56vw, 230px);
+  height: min(56vw, 230px);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: radial-gradient(circle at 50% 38%, #1c2530 0%, #0e1218 100%);
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.35),
+    0 0 40px rgba(45, 212, 191, 0.18),
+    0 10px 40px rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.12s cubic-bezier(0.22, 0.61, 0.36, 1),
+    box-shadow 0.18s ease;
+  touch-action: manipulation;
+}
+
+.mrec__btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.mrec__btn:disabled {
+  cursor: default;
+}
+
+.mrec__btn-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76%;
+  height: 76%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(45, 212, 191, 0.1), transparent);
+}
+
+/* idle/result/error: solid teal record dot */
+.mrec__mic {
+  width: 38%;
+  height: 38%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #57f0db, var(--m-accent));
+  box-shadow: 0 0 24px rgba(45, 212, 191, 0.6);
+  font-size: 0;
+}
+
+/* recording: pulsing ring whose scale tracks the mic level */
+.mrec__btn--recording {
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.5),
+    0 0 50px rgba(239, 68, 68, 0.25),
+    0 10px 40px rgba(0, 0, 0, 0.55);
+}
+
+.mrec__ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(45, 212, 191, 0.55);
+  transform: scale(calc(1 + var(--lvl, 0) * 0.18));
+  opacity: calc(0.45 + var(--lvl, 0) * 0.55);
+  transition:
+    transform 0.08s linear,
+    opacity 0.08s linear;
+  pointer-events: none;
+}
+
+.mrec__count {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(40px, 14vw, 64px);
+  font-weight: 700;
+  color: var(--m-accent);
+  text-shadow: 0 0 24px rgba(45, 212, 191, 0.4);
+}
+
+/* spinner for requesting / identifying */
+.mrec__spinner {
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  border: 4px solid rgba(45, 212, 191, 0.22);
+  border-top-color: var(--m-accent);
+  animation: mrec-spin 0.8s linear infinite;
+}
+
+@keyframes mrec-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mrec__status {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--m-text-dim);
+  max-width: 360px;
+}
+
+/* live level meter under the button while recording */
+.mrec__meter {
+  width: min(80vw, 360px);
+  height: 8px;
+  border-radius: 5px;
+  background: var(--m-bg-2);
+  border: 1px solid var(--m-border);
+  overflow: hidden;
+}
+
+.mrec__meter-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--m-accent), var(--m-accent-2));
+  transition: width 0.08s linear;
+}
+
+/* error card */
+.mrec__error {
+  width: min(88vw, 420px);
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ffb4b4;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* results list */
+.mrec__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: min(92vw, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mrec__result {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--m-panel);
+  border: 1px solid var(--m-border);
+}
+
+.mrec__result:first-child {
+  border-color: rgba(45, 212, 191, 0.45);
+  box-shadow: 0 0 18px rgba(45, 212, 191, 0.12);
+}
+
+.mrec__result-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mrec__result-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mrec__result-score {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--m-accent);
+}
+
+.mrec__score-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--m-bg-2);
+  border: 1px solid var(--m-border);
+  overflow: hidden;
+}
+
+.mrec__score-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--m-accent), var(--m-accent-2));
+}
+
+/* record-again button */
+.mrec__again {
+  margin-top: 4px;
+  padding: 14px 28px;
+  min-height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--m-accent);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s ease;
+}
+
+.mrec__again:active {
+  background: rgba(45, 212, 191, 0.22);
+}
+
+/* ---- footer: engine address ---- */
+.mrec__footer {
+  flex: 0 0 auto;
+  padding: 10px 16px 18px;
+  border-top: 1px solid var(--m-border);
+  background: rgba(11, 13, 18, 0.6);
+}
+
+.mrec__engine-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--m-border);
+  background: var(--m-bg-2);
+  color: var(--m-text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mrec__engine-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--m-accent-2);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+}
+
+.mrec__engine-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: 12.5px;
+  color: var(--m-text);
+}
+
+.mrec__engine-edit-glyph {
+  flex: 0 0 auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--m-accent);
+}
+
+.mrec__engine-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mrec__engine-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--m-text-faint);
+}
+
+.mrec__engine-input {
+  width: 100%;
+  padding: 14px 14px;
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid var(--m-border);
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-size: 16px; /* >=16px so iOS doesn't zoom on focus */
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  outline: none;
+}
+
+.mrec__engine-input:focus {
+  border-color: var(--m-accent);
+}
+
+.mrec__engine-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.mrec__engine-save,
+.mrec__engine-cancel {
+  flex: 1 1 auto;
+  padding: 12px;
+  min-height: 48px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mrec__engine-save {
+  border: 1px solid rgba(45, 212, 191, 0.5);
+  background: rgba(45, 212, 191, 0.14);
+  color: var(--m-accent);
+}
+
+.mrec__engine-cancel {
+  border: 1px solid var(--m-border);
+  background: var(--m-bg-2);
+  color: var(--m-text-dim);
+}
+
+.mrec__engine-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--m-text-faint);
+}
+
+.mrec__engine-hint code {
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  color: var(--m-text-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mrec__spinner {
+    animation: none;
+  }
+  .mrec__ring {
+    transition: none;
+  }
+}
