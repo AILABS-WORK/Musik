@@ -1,104 +1,72 @@
-# 🎧 Musik — your AI music hub
+# Musik
 
-Drop a folder of music in and Musik figures out what everything is, lets you
-build your **own** genres and subgenres **by example**, and sorts your library
-into clean `Genre/Subgenre` folders with Rekordbox-ready tags — all locally, on
-your GPU. It's built for DJs and deep electronic libraries where "house" isn't
-enough and you actually care about deep-house vs tech-house vs minimal.
+Musik is the tool I built to deal with my own DJ library. I have around 1500 tracks, mostly electronic, and none of them had real genres on them. "House" tells me nothing when I'm trying to find the right deep, groovy thing for sunset versus a punchy peak-time roller. So I wanted something that listens to the actual audio, sorts it into the genres and subgenres I care about, and writes tags Rekordbox can read. It runs locally on my GPU and nothing gets uploaded anywhere.
 
-```
-drag music in ─▶ auto-classify ─▶ review / relabel / make new genres ─▶ organize into your folder tree
-        └─ browse sound-alikes · cluster the dump · write genre tags ─┘   (dry-run + undo on everything)
-```
+The whole idea is that you define genres by example. You are not picking from a fixed list someone else decided on. You give it a handful of tracks that sound like "deep dub techno" to you and it learns that from the audio. Want a new subgenre, drop in a few more examples. No retraining, no waiting.
 
----
+## What it does
 
-## ⚡ Get started (Windows, NVIDIA GPU)
+You drag a folder of music in (or hit Browse, or drop files straight onto the window). Musik fingerprints every track with a music model, and from there it can:
 
-**One-time setup** — installs everything (engine, CUDA PyTorch, the music model, the app) and drops a **Musik** shortcut on your desktop:
+- Sort everything into your own Genre/Subgenre folders and write Rekordbox-ready genre tags.
+- Classify by example: a centroid or nearest-neighbor match over the embeddings of your reference tracks. When you correct something it gets folded back in and the next pass is sharper.
+- Find sound-alikes ("tracks like this one"), cluster an unsorted dump into groups you can name, and plot the whole library as a 2D map.
+- Work out BPM, musical key and energy for every track.
+- Tag the actual sounds in a track using AudioSet (527 classes, including instruments, vocals, and yes, a literal cowbell class).
+- Search by sound in plain words. Type "songs with cowbells" or "female vocals" or "dark melodic techno around 124 bpm" and it ranks your library. Known sounds go through the precise tagger, anything else goes through CLAP text-to-audio matching, and you can drag a threshold to pull every match instead of just the top few.
+- Give each track a profile: the instruments it heard, vocal or instrumental with a rough gender read, a mood (it places the track on a valence/arousal map and hands you the closest named moods, things like driving, hypnotic, dark, dreamy), and a one-line description.
+- Build DJ sets from a description. Tell it "light groovy house at sunset, start slow, build punchier, then slow down deep and minimal" and it orders a set along that energy and BPM curve. Add constraints like "female vocal, instrumental warmup, with guitar, no ambient" and it filters by what it actually heard, then keeps neighbouring tracks in compatible keys using the Camelot wheel.
+- Identify a track by its sound against your own library, and give you a radio queue of what to play next that auto-advances.
+- Tracklist a whole mix. Drop a recorded set in and it tells you which of your tracks are in it and at what timestamps.
+- Pull the artist's region and origin from MusicBrainz once a track is identified. Region comes from who made it, not from guessing at the audio.
+
+There is also an optional deep pass that splits a track into stems (Demucs), re-listens to the drum stem to catch quiet percussion, and runs the vocal stem through Whisper to guess the sung language. It is slower and off by default.
+
+Anything that touches your files has a dry-run preview and one-click undo. The database is the source of truth. Files only move when you say so.
+
+## On your phone
+
+You can open Musik on your phone and install it like a normal app. There is a Record and Identify screen: tap record, it listens for about ten seconds, and matches what it heard against your library. Point it at the engine running on your desktop over your local network. Good for working out what a track is, or what someone is mixing, as long as it is something in your own crate.
+
+## Setup (Windows, NVIDIA GPU)
+
+One command sets up everything: the Python engine, CUDA PyTorch for your GPU, the music model, the app, and a Musik shortcut on your desktop.
 
 ```powershell
-# from the project folder, in PowerShell:
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-Then just **double-click the Musik icon on your desktop**. The app opens and the
-engine starts automatically — nothing else to run. (First launch compiles the
-app once, ~1–2 min; after that it's instant.)
+Then double-click the Musik icon. The app opens and the engine starts on its own, there is nothing else to run. The first launch builds the app once (a minute or two), after that it is instant.
 
-Prerequisites the setup assumes are installed: **Python 3.13**, **Node 18+**, and
-**Rust** (for the desktop shell). The RTX 5080 / any NVIDIA GPU is used
-automatically via the CUDA PyTorch build (`cu128`).
+You need Python 3.13, Node 18 or newer, and Rust (for the desktop shell) installed first. Your NVIDIA GPU is used automatically through the CUDA build of PyTorch.
 
----
+### Picking a model
 
-## 🎚️ How to use it
+Set it in the top bar.
 
-1. **Set your destination** — in the top bar, type the **Organized library** folder (where sorted music should go) and pick **copy** or **move**.
-2. **Drag a selection of files or whole folders onto the window** → they import and auto-embed (or paste a path into *Import*). The model fingerprints each track.
-3. **Teach it your genres** (first time):
-   - *Genres → Create genre by example* — check a few reference tracks, name the genre.
-   - or *Clusters → Find clusters → Make genre from cluster* — let it group sound-alikes for you.
-   - or *Seed taxonomy* — load 2,600+ RateYourMusic genres as a starting vocabulary.
-4. **Classify & review** — hit **Suggest**; every track gets a genre + confidence. Sort by confidence, **relabel inline** (click a genre cell), eyeball the **Map**, or play tracks in-app.
-5. **Apply** — write genre **tags** (Rekordbox reads them) and **Organize** into `Destination/Genre/Subgenre/`. **Undo** reverses anything.
+- mert is the one to use. It is trained on music and it is sharp on fine electronic subgenres. Runs on the GPU.
+- baseline needs no download and is rough. Fine for a first look.
+- muq is the newest option and currently the strongest on the MARBLE benchmark. Worth A/B testing against mert on your own labels.
+- discogs and clap are also there (Discogs-style labels, and defining a genre by text). See engine/README.md.
 
-Everything is reversible: the app's database is the source of truth, files are
-only touched when you accept, every change has a dry-run preview and one-click undo.
+The bigger models download from Hugging Face the first time you use them. The deep pass (stems and language) needs Demucs and Whisper, which you install once with `pip install demucs openai-whisper`.
 
-### Pick the model
-- **`mert`** (recommended) — a music-trained model; sharp on fine electronic subgenres, GPU-accelerated. Set it in the top bar after `setup.ps1`.
-- **`baseline`** — zero-install, rough; fine for a first look.
-- **`discogs` / `clap`** — Discogs-style labels / define-a-genre-by-text. See `engine/README.md`.
+## How the classification actually works
 
----
+There is no fixed classifier that you would have to retrain every time you want a new genre. Instead:
 
-## ✨ What it does today
+A music foundation model (MERT by default) turns each track into a vector that captures its timbre, rhythm and texture. A genre is just the average of the vectors of the tracks you gave as examples. To classify a track, Musik measures cosine similarity to those averages. Adding a subgenre is dropping in a few examples, and your confirmations become new examples, so it improves as you use it.
 
-- **Auto-classify** audio into fine-grained **subgenres** you define
-- **Define genres BY EXAMPLE** — a few reference tracks, no retraining
-- **Bulk drag-and-drop** import + **organize into `Genre/Subgenre` folders**
-- **Write Rekordbox-ready genre tags**
-- **Sound-alike** discovery ("tracks like this") + a 2D **similarity map**
-- **Clustering** of an unsorted dump into groups you can name
-- **Inline relabel + active learning** — your corrections sharpen the next pass
-- Local + private; runs on your GPU; dry-run + undo everywhere
+For the open-vocabulary side, CLAP puts audio and text in one shared space, so a text query can rank audio directly. AudioSet tagging supplies the precise, named sounds. BPM, key and energy come from ordinary signal processing (numpy and scipy), no heavy models needed.
 
-- **AI Set Builder** — describe a vibe ("light groovy house at sunset, start slow,
-  build punchier, end deep & minimal") → an ordered set following that energy/BPM arc
-- **Identify a track by its sound** + **Radio** (auto-advancing play-next queue)
-- **Auto-sort** one-click pipeline, or work through it interactively
+MusicBrainz is the authoritative metadata layer. Once a track is identified, its real genres, year, label and the artist's region come from MusicBrainz, whose data is CC0 and free to use.
 
-## 🧠 Under the hood (how the classification works)
+## Layout
 
-Musik uses the modern MIR recipe: **frozen self-supervised music embeddings + a light probe**, not a brittle fixed-label classifier.
+- engine/ is the Python side: embeddings, the by-example classifier, clustering, analysis, tagging, search, the set builder, identify, tags and organize, and a local FastAPI server the app talks to. It has a full test suite. See engine/README.md.
+- app/ is the desktop UI (Tauri and React). The Rust shell starts the engine for you. See app/README.md.
+- docs/ and research/ hold the design notes and the research the build is based on.
 
-- **Embeddings** — each track is encoded by a music foundation model (**MERT** `m-a-p/MERT-v1-330M`, GPU) into a vector that captures timbre/rhythm/texture; whole-track windows are mean-pooled + L2-normalized and cached by content hash.
-- **Classification by example** — a "genre" is the **centroid (or k-NN over exemplars)** of the embeddings of a few reference tracks. Classify = cosine similarity to those centroids. Adding a custom subgenre = drop in examples, no retraining. Your confirmations become new exemplars (active learning).
-- **Open vocabulary** — **CLAP** (LAION) puts audio and free text in one space, enabling define-a-genre-by-name and (next) free-text attribute search.
-- **Analysis** — BPM (onset-autocorrelation), musical key (Krumhansl-Schmuckler chroma), energy/danceability — numpy/scipy, no heavy deps.
+## Privacy
 
-### What's next (research-grounded — see [the design spec](docs/superpowers/specs/2026-06-16-music-understanding-search-design.md))
-A rich per-song **"understanding" record** + **open-vocabulary search** ("give me songs with cowbells"):
-- **AudioSet-527 tagging** (EfficientAT / AST) — instruments, vocals, and a literal *Cowbell* class
-- **Vocal vs instrumental + gender** (Essentia heads on the Discogs-EffNet embedding), **mood** (arousal/valence), **sung-language** (Whisper on a separated vocal stem)
-- **Open-vocab attribute search** (CLAP mean + per-chunk-max embeddings, prompt-ensemble, per-query calibration so you can "return ALL matches") with a router that sends known classes to the precise tagger and free text to CLAP
-- **Source separation** (HTDemucs) as an opt-in "deep analysis" pass for quiet percussion / vocal technique / language
-- An **LLM-over-tags "understanding compiler"** that fuses all model outputs into canonical tags + a per-song caption, and feeds an attribute-aware set-builder (Camelot key + mood continuity)
-- **Track identification** (in-library → AcoustID/Chromaprint → AudD/ACRCloud) → **artist region/origin** via MusicBrainz metadata (region comes from *who it is*, not the acoustics)
-- **Mix / DJ-set tracklisting** — drop a whole set in → every track + **timestamps** + transition points
-- **Phone companion** — record on your phone and identify against your library + global DBs (catch what Shazam can't), synced back to the desktop
-- (Honest scope: voice-type/SATB is **not recoverable from a mix** — we ship a coarse register *hint*; acoustic region isn't either, so region comes via identification + metadata.)
-
-## 🧱 How it's built
-
-- **Engine** (`engine/`, Python) — embeddings, by-example classification, clustering,
-  BPM/key/energy analysis, set-builder, identify, tags + folder organize, a local FastAPI
-  sidecar. **156 tests.** See `engine/README.md`.
-- **App** (`app/`, Tauri v2 + React) — the desktop UI; the Rust shell auto-starts the
-  sidecar. See `app/README.md`.
-- **Research** (`research/FINDINGS.md` + `docs/superpowers/specs/`) — the deep-dives that shaped the design.
-
-## 🔒 Privacy
-Everything runs on your machine. Audio never leaves your computer (model weights
-download once from Hugging Face on first use; classification is fully local).
+It all runs on your machine and your audio never leaves your computer. The only network calls are optional ones: model downloads from Hugging Face the first time, and MusicBrainz or AcoustID lookups when you ask to identify a track.
