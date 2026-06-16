@@ -64,25 +64,37 @@ only touched when you accept, every change has a dry-run preview and one-click u
 - **Inline relabel + active learning** — your corrections sharpen the next pass
 - Local + private; runs on your GPU; dry-run + undo everywhere
 
-## 🛣️ Roadmap (next)
+- **AI Set Builder** — describe a vibe ("light groovy house at sunset, start slow,
+  build punchier, end deep & minimal") → an ordered set following that energy/BPM arc
+- **Identify a track by its sound** + **Radio** (auto-advancing play-next queue)
+- **Auto-sort** one-click pipeline, or work through it interactively
 
-These are designed-for, not done yet — see `docs/superpowers/`:
-- **Play-next / radio** — auto-suggest what to play after a track
-- **Identify a track from its sound** (within your library; AcoustID for unknowns)
-- **AI set builder** — describe a vibe in words ("light groovy house at sunset,
-  start slow, build punchier, end deep & minimal") → an ordered set following that
-  energy/BPM arc (needs per-track BPM/key/energy analysis + an LLM planner)
-- **Two workflow modes** — full-auto ("do everything, I'll edit after") vs.
-  interactive ("show me your guess + alternatives, keep refining")
+## 🧠 Under the hood (how the classification works)
+
+Musik uses the modern MIR recipe: **frozen self-supervised music embeddings + a light probe**, not a brittle fixed-label classifier.
+
+- **Embeddings** — each track is encoded by a music foundation model (**MERT** `m-a-p/MERT-v1-330M`, GPU) into a vector that captures timbre/rhythm/texture; whole-track windows are mean-pooled + L2-normalized and cached by content hash.
+- **Classification by example** — a "genre" is the **centroid (or k-NN over exemplars)** of the embeddings of a few reference tracks. Classify = cosine similarity to those centroids. Adding a custom subgenre = drop in examples, no retraining. Your confirmations become new exemplars (active learning).
+- **Open vocabulary** — **CLAP** (LAION) puts audio and free text in one space, enabling define-a-genre-by-name and (next) free-text attribute search.
+- **Analysis** — BPM (onset-autocorrelation), musical key (Krumhansl-Schmuckler chroma), energy/danceability — numpy/scipy, no heavy deps.
+
+### What's next (research-grounded — see [the design spec](docs/superpowers/specs/2026-06-16-music-understanding-search-design.md))
+A rich per-song **"understanding" record** + **open-vocabulary search** ("give me songs with cowbells"):
+- **AudioSet-527 tagging** (EfficientAT / AST) — instruments, vocals, and a literal *Cowbell* class
+- **Vocal vs instrumental + gender** (Essentia heads on the Discogs-EffNet embedding), **mood** (arousal/valence), **sung-language** (Whisper on a separated vocal stem)
+- **Open-vocab attribute search** (CLAP mean + per-chunk-max embeddings, prompt-ensemble, per-query calibration so you can "return ALL matches") with a router that sends known classes to the precise tagger and free text to CLAP
+- **Source separation** (HTDemucs) as an opt-in "deep analysis" pass for quiet percussion / vocal technique / language
+- An **LLM-over-tags "understanding compiler"** that fuses all model outputs into canonical tags + a per-song caption, and feeds an attribute-aware set-builder (Camelot key + mood continuity)
+- (Honest scope: voice-type/SATB and region/dialect are **not recoverable from a mix** — we ship a coarse register *hint* and drop region.)
 
 ## 🧱 How it's built
 
 - **Engine** (`engine/`, Python) — embeddings, by-example classification, clustering,
-  tags + folder organize, a local FastAPI sidecar. 110 tests. See `engine/README.md`.
+  BPM/key/energy analysis, set-builder, identify, tags + folder organize, a local FastAPI
+  sidecar. **156 tests.** See `engine/README.md`.
 - **App** (`app/`, Tauri v2 + React) — the desktop UI; the Rust shell auto-starts the
   sidecar. See `app/README.md`.
-- **Research** (`research/FINDINGS.md`) — the deep-dive that shaped the design.
-- **Specs/plans** (`docs/superpowers/`).
+- **Research** (`research/FINDINGS.md` + `docs/superpowers/specs/`) — the deep-dives that shaped the design.
 
 ## 🔒 Privacy
 Everything runs on your machine. Audio never leaves your computer (model weights
