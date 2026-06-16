@@ -23,7 +23,7 @@ Musik already runs the 2024–2026 recipe: **frozen self-supervised music embedd
 | **Singing technique** (belt/breathy/vibrato) | MLP probe on MERT/MuQ over the **separated vocal stem** | VocalSet-trained head | **Good but indicative** |
 | **Voice register hint** | Coarse low/mid/high from sung-F0 on the vocal stem — **never SATB/fach** | CREPE/torchcrepe F0 | **Speculative** → low-confidence hint only |
 | **Sung-language ID** (closed set of major langs) | Language-detect on the **separated vocal stem** | Whisper large-v3 (faster-whisper) | **Good** for major languages |
-| **Region / dialect** | — | — | **Not recoverable from audio. We will NOT ship this.** |
+| **Region / origin of the artist** | **identify the track → look up artist metadata** (NOT from acoustics) | AcoustID/Chromaprint or AudD/ACRCloud → **MusicBrainz**/Discogs artist `area`/`begin-area` | **Solid once the track is identified** (acoustic-only region/dialect remains unsolved) |
 | **Mood / emotion** | AudioSet mood classes + Essentia mood/theme + arousal-valence heads + MERT MLP; CLAP for free-text | Essentia + MERT probe | **Solid–good**; gives a 2-D arousal/valence coordinate |
 | **Per-song description** | LLM-over-tags from the structured record (and/or a music captioner) | templated/LLM (LP-MusicCaps optional) | **Solid** via templating |
 | **Open-vocab search** ("cowbells") | Precomputed CLAP audio vectors (mean **and** per-chunk-max) + prompt-ensemble + **per-query calibration** + a router | LAION-CLAP + ReCLAP prompts | **Solid**, fully local, sub-second queries |
@@ -65,19 +65,43 @@ Dark glassy "studio at night" — near-black charcoal (#0B0D12), translucent blu
 ## 8. Risks / honesty
 - **Licenses:** MERT/MuQ/MuQ-MuLan weights are **CC-BY-NC** (fine for personal/local; keep a permissive-only profile — CLAP + AudioSet taggers + Demucs are MIT/Apache — if ever commercial).
 - **"Cowbell" on dense mixes** is the weakest link → surface as probabilistic, gate stem-separation behind a toggle.
-- **Voice type (SATB) & region/dialect are unsolved from a mix** → register = coarse low/mid/high hint only; **drop region entirely**.
+- **Voice type (SATB) is unsolved from a mix** → register = coarse low/mid/high hint only. **Acoustic** region/dialect classification is also unsolved — but the artist's **region of origin IS available via track identification → MusicBrainz/Discogs metadata** (see §9b). We get region from *who it is*, not from the sound.
 - **CLAP cosine is uncalibrated & prompt-sensitive** → per-query calibration + ReCLAP prompts are **mandatory**, not polish.
 - **Domain shift:** Essentia gender, VocalSet technique, Whisper LID are trained on cleaner/solo/speech → treat as probabilities, prefer the separated stem.
 - **Compute:** ingest taggers are fine; the deep pass (HTDemucs + Whisper + technique) is seconds/track → batch, cache, opt-in.
 - **Dependency surface:** wrap each model behind the existing lazy-import `Embedder`/head pattern with install hints; prefer an **ONNX path for Essentia** to avoid a hard TensorFlow dep.
 - **LLM caption hallucination** → structured tags are the source of truth; constrain the LLM to only describe provided facts (or template it).
 
+## 8b. Track identification, mix tracklisting & region (metadata path)
+Identity unlocks the metadata-only attributes (artist region/origin, year, label, official genre) that audio can't give.
+
+**Three identification tiers (router, cheapest → most powerful):**
+1. **In-library match (no network):** embed the query → cosine vs the library's cached embeddings → the track if it's already yours. Already built (`identify_in_library`). Great for "what was that in my own collection".
+2. **Global acoustic fingerprint (open):** **Chromaprint** (`fpcalc`) → **AcoustID** API → MusicBrainz recording/artist. Free, but coverage is patchy and needs the `fpcalc` binary + an API key.
+3. **Commercial recognition (best coverage, incl. obscure/live):** **AudD** or **ACRCloud** (Shazam-grade). Paid API keys; catches a lot that AcoustID/Shazam-lite miss, and supports continuous/stream recognition.
+
+Once identified → **MusicBrainz** (no key, just a UA + rate-limit) for the artist's `area`/`begin-area` (**region/origin**), plus year/label/official tags; optionally Discogs/Wikidata. This is how "what region is this voice from" actually gets answered.
+
+**Mix / DJ-set tracklisting with timestamps** ("shove a whole set in → every song + when"):
+- Slide a window (e.g. 10–20 s, hop 5 s) over the mix; identify each window via the router above (in-library embedding match first — *free and instant for tracks you own* — then fingerprint/commercial for unknowns).
+- **Merge consecutive windows** that resolve to the same track into segments → a timestamped tracklist `[{start, end, track_id|external_id, title, artist, confidence}]`; flag overlap/transition regions where two tracks score highly (the actual mix points).
+- Robustness notes: DJ mixes are pitch/tempo-shifted and EQ'd, so exact fingerprinting degrades — embedding-similarity matching against the user's own library is the strong path; commercial APIs (ACRCloud has a dedicated broadcast/“humming”+continuous mode) handle the rest. Expose confidence + the transition regions honestly.
+- API: `POST /api/identify-mix {path}` → segments; UI: drop a mix → a timeline of identified tracks with timestamps + jump-to-time playback.
+
+**Mobile companion (record-and-identify on the phone):**
+- Tauri v2 builds to **iOS/Android** from the same codebase, OR a lightweight **PWA**. The phone records audio → either (a) streams to the desktop engine on the LAN, or (b) runs a slim on-device identify (in-library embedding match needs the embedder on-device; fingerprint/commercial only needs to upload a snippet).
+- Use cases the user wants: record a track Shazam can't get (match against *your* library / obscure DBs), record a friend's live mix and get the tracklist, quick "what's this" capture synced back to the desktop library.
+- Scope: real but heavier (mobile build, recording permissions, on-device vs server inference). A **record→upload→identify** PWA/companion is the pragmatic v1; full on-device embedding is a later optimization.
+
 ## 9. Build phases
-1. **Keystone:** AudioSet tagger (AST/EfficientAT) → `understanding.audioset` + instrument/vocal chips; **open-vocab search** (CLAP mean+chunkmax + calibration + router) → "/api/search" + a search bar. ("songs with cowbells" works.)
-2. **Rich record:** Essentia voice/gender + mood heads; MERT MLP probes (OpenMIC, MTG-Jamendo); LLM-over-tags caption + canonical tags; per-song detail view.
-3. **Deep pass:** HTDemucs stems; Whisper language; CREPE register; VocalSet technique — gated toggle.
-4. **Set-builder fusion** (attribute constraints + Camelot/mood tie-breakers) and the **UI overhaul** (home, detail view, constellation, timeline).
-5. **Encoder A/B:** MuQ vs MERT, MuQ-MuLan vs CLAP behind the `Embedder` interface.
+1. **Keystone — tags + open-vocab search:** AudioSet tagger (AST/EfficientAT) → `understanding.audioset` + instrument/vocal chips; **open-vocab search** (CLAP mean+chunkmax + calibration + router) → `/api/search` + a search bar. ("songs with cowbells" works.)
+2. **Identification + region:** extend identify with the **router** (in-library → AcoustID/Chromaprint → AudD/ACRCloud) and **MusicBrainz** lookup → artist **region/origin**, year, label. ("what region is this voice from" works once the track is named.)
+3. **Mix tracklisting:** `/api/identify-mix` — windowed identification over a whole set → **timestamped tracklist** + transition regions; a drop-a-mix → timeline UI.
+4. **Rich record:** Essentia voice/gender + mood heads; MERT MLP probes (OpenMIC, MTG-Jamendo); LLM-over-tags caption + canonical tags; per-song **detail view**.
+5. **Deep pass:** HTDemucs stems; Whisper language; CREPE register; VocalSet technique — gated toggle.
+6. **Set-builder fusion** (attribute + region/language constraints + Camelot/mood tie-breakers) and the **UI overhaul** (home, detail view, constellation, timeline).
+7. **Mobile companion:** Tauri-mobile/PWA record-and-identify (record → upload → identify against your library + global DBs; sync back to desktop).
+8. **Encoder A/B:** MuQ vs MERT, MuQ-MuLan vs CLAP behind the `Embedder` interface.
 
 ## 10. Key sources
 - **MERT** — Acoustic Music Understanding via SSL, ICLR 2024, arXiv:2306.00107 · hf.co/m-a-p/MERT-v1-330M

@@ -85,7 +85,10 @@ A rich per-song **"understanding" record** + **open-vocabulary search** ("give m
 - **Open-vocab attribute search** (CLAP mean + per-chunk-max embeddings, prompt-ensemble, per-query calibration so you can "return ALL matches") with a router that sends known classes to the precise tagger and free text to CLAP
 - **Source separation** (HTDemucs) as an opt-in "deep analysis" pass for quiet percussion / vocal technique / language
 - An **LLM-over-tags "understanding compiler"** that fuses all model outputs into canonical tags + a per-song caption, and feeds an attribute-aware set-builder (Camelot key + mood continuity)
-- (Honest scope: voice-type/SATB and region/dialect are **not recoverable from a mix** — we ship a coarse register *hint* and drop region.)
+- **Track identification** (in-library → AcoustID/Chromaprint → AudD/ACRCloud) → **artist region/origin** via MusicBrainz metadata (region comes from *who it is*, not the acoustics)
+- **Mix / DJ-set tracklisting** — drop a whole set in → every track + **timestamps** + transition points
+- **Phone companion** — record on your phone and identify against your library + global DBs (catch what Shazam can't), synced back to the desktop
+- (Honest scope: voice-type/SATB is **not recoverable from a mix** — we ship a coarse register *hint*; acoustic region isn't either, so region comes via identification + metadata.)
 
 ## 🧱 How it's built
 
