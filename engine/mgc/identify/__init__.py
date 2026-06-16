@@ -5,6 +5,11 @@ embeddings (cosine over ``store.load_matrix``). ``identify_external`` is an
 optional AcoustID/Chromaprint fingerprint lookup.
 """
 
-from mgc.identify.identify import identify_external, identify_in_library
+from mgc.identify.identify import (
+    identify_external,
+    identify_in_library,
+    identify_mix,
+    lookup_region,
+)
 
-__all__ = ["identify_in_library", "identify_external"]
+__all__ = ["identify_in_library", "identify_external", "identify_mix", "lookup_region"]

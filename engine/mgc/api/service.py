@@ -170,6 +170,16 @@ class Engine:
         from mgc.identify.identify import identify_in_library
         return identify_in_library(self.store, path, self.model, n=n)
 
+    def identify_mix(self, path: str, window_seconds: float = 15.0,
+                     hop_seconds: float = 7.0) -> list:
+        from mgc.identify.identify import identify_mix
+        return identify_mix(self.store, path, self.model,
+                            window_seconds=window_seconds, hop_seconds=hop_seconds)
+
+    def region(self, artist: str, title: Optional[str] = None) -> dict:
+        from mgc.identify.identify import lookup_region
+        return lookup_region(artist, title)
+
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
         ids = radio_queue(self.store, track_id, self.model, n=n)

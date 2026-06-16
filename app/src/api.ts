@@ -54,6 +54,11 @@ export const api = {
       "POST", "/api/identify", { path, n }),
   radio: (trackId: number, n = 20) =>
     req<{ queue: { track_id: number; name: string }[] }>("GET", `/api/radio/${trackId}?n=${n}`),
+  identifyMix: (path: string) =>
+    req<{ segments: { start: number; end: number; track_id: number; name: string; score: number }[] }>(
+      "POST", "/api/identify-mix", { path }),
+  region: (artist: string, title?: string) =>
+    req<{ region: Record<string, unknown> }>("POST", "/api/region", { artist, title: title ?? null }),
 
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),

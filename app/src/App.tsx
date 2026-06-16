@@ -14,6 +14,7 @@ import { StatusBar } from "./components/StatusBar";
 import { ImportBar } from "./components/ImportBar";
 import { SetBuilder } from "./components/SetBuilder";
 import { IdentifyPanel } from "./components/IdentifyPanel";
+import { MixPanel } from "./components/MixPanel";
 
 type MainView = "table" | "map";
 
@@ -475,6 +476,7 @@ export default function App() {
             />
           )}
           {tab === "id" && <IdentifyPanel report={report} onPlay={play} />}
+          {tab === "mix" && <MixPanel report={report} onPlay={play} />}
           {tab === "apply" && (
             <ApplyPanel report={report} onMutated={refreshAll} />
           )}

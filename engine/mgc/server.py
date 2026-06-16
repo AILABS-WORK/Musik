@@ -75,6 +75,17 @@ class IdentifyIn(BaseModel):
     n: int = 5
 
 
+class MixIn(BaseModel):
+    path: str
+    window_seconds: float = 15.0
+    hop_seconds: float = 7.0
+
+
+class RegionIn(BaseModel):
+    artist: str
+    title: Optional[str] = None
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -394,6 +405,18 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def radio(track_id: int, n: int = 20):
         with app.state.lock:
             return {"queue": eng().radio(track_id, n=n)}
+
+    @app.post("/api/identify-mix")
+    def identify_mix(body: MixIn):
+        """Tracklist a whole mix/set against the library, with timestamps."""
+        with app.state.lock:
+            return {"segments": eng().identify_mix(
+                body.path, window_seconds=body.window_seconds, hop_seconds=body.hop_seconds)}
+
+    @app.post("/api/region")
+    def region(body: RegionIn):
+        """Artist region/origin via MusicBrainz metadata (network, best-effort)."""
+        return {"region": eng().region(body.artist, body.title)}
 
     return app
 
