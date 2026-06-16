@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from mgc.understanding.moods import named_moods
+
 # AudioSet-527 class names that denote instruments (curated subset that exists
 # in the ontology). Matched against the actual label list at runtime.
 _INSTRUMENTS = {
@@ -74,13 +76,18 @@ def compile_record(audioset, labels: list[str], analysis: dict | None = None,
     is_major = bool(key) and "maj" in str(key).lower()
     valence = 0.5 + (0.15 if is_major else -0.10) + (arousal - 0.5) * 0.3
     valence = max(0.0, min(1.0, valence))
-    mood = {"arousal": round(arousal, 3), "valence": round(valence, 3)}
+    bpm_f = float(bpm) if bpm else None
+    scored_moods = named_moods(valence, arousal, bpm=bpm_f)
+    mood_words = [m["mood"] for m in scored_moods]
+    mood = {"arousal": round(arousal, 3), "valence": round(valence, 3),
+            "tags": mood_words, "scored": scored_moods}
 
     # --- caption (templated, never invents instruments) ---------------------
-    ew = "High-energy" if arousal > 0.66 else ("Mellow" if arousal < 0.4 else "Mid-energy")
+    ew = "high-energy" if arousal > 0.66 else ("mellow" if arousal < 0.4 else "mid-energy")
     vphrase = "instrumental" if vi == "instrumental" else (
         f"{gender} vocal" if gender != "unknown" else "vocal")
-    head = f"{ew} {vphrase} track"
+    lead = mood_words[0].capitalize() if mood_words else ew.capitalize()
+    head = f"{lead}, {ew} {vphrase} track"
     if bpm:
         head += f" at {round(float(bpm))} BPM"
     if key:
@@ -93,10 +100,10 @@ def compile_record(audioset, labels: list[str], analysis: dict | None = None,
     tags: list[str] = []
     tags.append("instrumental" if vi == "instrumental"
                 else (f"{gender} vocal" if gender != "unknown" else "vocal"))
+    tags.extend(mood_words[:2])
     tags.extend(top_instr)
     if key:
         tags.append(str(key))
-    tags.append(ew.lower())
     seen, canonical = set(), []
     for t in tags:
         if t and t.lower() not in seen:

@@ -18,7 +18,7 @@ from mgc.types import Track
 
 def test_parse_returns_expected_shape():
     p = parse_description("a chill deep house set")
-    assert set(p.keys()) == {"genres", "energy_arc", "bpm_hint", "length", "notes"}
+    assert set(p.keys()) == {"genres", "energy_arc", "bpm_hint", "length", "attributes", "notes"}
     assert isinstance(p["energy_arc"], list)
     assert 5 <= len(p["energy_arc"]) <= 7
     assert all(0.0 <= x <= 1.0 for x in p["energy_arc"])
@@ -176,3 +176,38 @@ def test_build_set_parsed_included(tmp_store):
     res = build_set(tmp_store, "deep house 122 bpm", model="baseline", length=2)
     assert res["parsed"]["bpm_hint"] == (122, 122)
     assert "deep house" in res["parsed"]["genres"]
+
+
+def test_build_set_respects_instrumental_constraint(tmp_store, monkeypatch):
+    """'instrumental' set must only pick instrumental tracks (via understanding)."""
+    import numpy as np
+
+    import mgc.tagging
+
+    labels = ["Music", "Singing", "Female singing", "Piano"]
+    monkeypatch.setattr(mgc.tagging, "get_audioset_labels", lambda: labels)
+    ids = {}
+    for i, (name, vocal) in enumerate([("voc0", True), ("voc1", True),
+                                       ("inst0", False), ("inst1", False)]):
+        tid = tmp_store.upsert_track(Track(path=f"/lib/{name}.wav", content_hash=f"h{name}"))
+        tmp_store.save_analysis(tid, bpm=124.0, music_key="C maj", energy=0.5)
+        v = np.zeros(len(labels), np.float32)
+        v[labels.index("Piano")] = 0.6
+        if vocal:
+            v[labels.index("Singing")] = 0.8
+            v[labels.index("Female singing")] = 0.7
+        tmp_store.save_understanding(tid, audioset=v, audioset_model="ast")
+        ids[name] = tid
+
+    res = build_set(tmp_store, "an instrumental set", model="baseline", length=2)
+    chosen = set(res["track_ids"])
+    assert chosen and chosen.issubset({ids["inst0"], ids["inst1"]})
+
+
+def test_build_set_camelot_label_in_reasons(tmp_store):
+    """Reasons carry the harmonic (Camelot) key label."""
+    for i in range(3):
+        tid = tmp_store.upsert_track(Track(path=f"/lib/k{i}.wav", content_hash=f"k{i}"))
+        tmp_store.save_analysis(tid, bpm=124.0, music_key="A min", energy=0.5)
+    res = build_set(tmp_store, "a set", model="baseline", length=2)
+    assert any("8A" in r for r in res["reasons"])  # A minor -> 8A

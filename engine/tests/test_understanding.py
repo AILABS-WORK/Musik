@@ -39,3 +39,24 @@ def test_compile_instrumental_minor():
     assert rec["mood"]["valence"] < 0.5                       # minor + low energy
     assert "instrumental" in rec["caption"].lower()
     assert "instrumental" in rec["tags_canonical"]
+
+
+def test_named_moods_are_distinct_per_region():
+    from mgc.understanding.moods import named_moods
+
+    bright = named_moods(0.9, 0.88)[0]["mood"]      # happy + hyped
+    dark = named_moods(0.18, 0.86)[0]["mood"]       # negative + hyped
+    calm = named_moods(0.6, 0.20)[0]["mood"]        # low arousal
+    assert bright in {"euphoric", "uplifting", "anthemic", "energetic", "joyful"}
+    assert dark in {"aggressive", "intense", "tense", "dark"}
+    assert calm in {"dreamy", "ethereal", "chill"}
+    assert len({bright, dark, calm}) == 3            # three different moods
+
+
+def test_compile_surfaces_named_moods():
+    labels = ["Music", "Piano"]
+    v = np.zeros(len(labels), np.float32)
+    v[labels.index("Piano")] = 0.5
+    rec = compile_record(v, labels, analysis={"energy": 0.9, "music_key": "C maj", "bpm": 128})
+    assert rec["mood"]["tags"]                       # named moods present
+    assert rec["mood"]["tags"][0].capitalize() in rec["caption"]  # caption leads with the mood

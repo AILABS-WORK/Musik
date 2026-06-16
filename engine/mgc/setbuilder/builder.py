@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from mgc.understanding.moods import MOOD_ANCHORS
+
 # Keyword buckets -> a representative energy level in 0..1.
 _LOW_WORDS = (
     "slow", "chill", "chilled", "deep", "minimal", "downtempo", "mellow",
@@ -107,14 +109,16 @@ def parse_description(text: str) -> dict:
                             wants_rise, wants_fall)
 
     genres = _parse_genres(raw, low)
+    attributes = parse_attributes(low)
 
-    notes = _summarize(shape, genres, bpm_hint, length)
+    notes = _summarize(shape, genres, bpm_hint, length, attributes)
 
     return {
         "genres": genres,
         "energy_arc": arc,
         "bpm_hint": bpm_hint,
         "length": length,
+        "attributes": attributes,
         "notes": notes,
     }
 
@@ -196,16 +200,131 @@ def _parse_genres(raw: str, low: str) -> list[str]:
     return found
 
 
-def _summarize(shape, genres, bpm_hint, length) -> str:
+def _summarize(shape, genres, bpm_hint, length, attributes=None) -> str:
     parts = [f"{shape} energy arc"]
     if genres:
         parts.append("genres: " + ", ".join(genres))
+    a = attributes or {}
+    if a.get("gender"):
+        parts.append(f"{a['gender']} vocal")
+    elif a.get("vocal"):
+        parts.append(a["vocal"])
+    if a.get("moods"):
+        parts.append("mood: " + ", ".join(a["moods"]))
+    if a.get("instruments"):
+        parts.append("with " + ", ".join(s.lower() for s in a["instruments"]))
     if bpm_hint:
         lo, hi = bpm_hint
         parts.append(f"{lo} bpm" if lo == hi else f"{lo}-{hi} bpm")
     if length:
         parts.append(f"{length} tracks")
     return "; ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Attribute constraints (vocal / gender / mood / instruments) + Camelot keys
+# ---------------------------------------------------------------------------
+
+_MOOD_WORDS = {name for name, _v, _a in MOOD_ANCHORS}
+_INSTRUMENT_WORDS = {
+    "guitar": "Guitar", "electric guitar": "Electric guitar", "piano": "Piano",
+    "synth": "Synthesizer", "synthesizer": "Synthesizer", "saxophone": "Saxophone",
+    "sax": "Saxophone", "trumpet": "Trumpet", "violin": "Violin, fiddle",
+    "strings": "String section", "drums": "Drum kit", "cowbell": "Cowbell",
+    "organ": "Organ", "flute": "Flute", "bass": "Bass guitar", "accordion": "Accordion",
+}
+
+# note+mode -> (camelot number, wheel letter). Majors are the B ring, minors the A ring.
+_CAMELOT = {
+    ("c", "maj"): (8, "B"), ("g", "maj"): (9, "B"), ("d", "maj"): (10, "B"),
+    ("a", "maj"): (11, "B"), ("e", "maj"): (12, "B"), ("b", "maj"): (1, "B"),
+    ("f#", "maj"): (2, "B"), ("gb", "maj"): (2, "B"), ("c#", "maj"): (3, "B"),
+    ("db", "maj"): (3, "B"), ("g#", "maj"): (4, "B"), ("ab", "maj"): (4, "B"),
+    ("d#", "maj"): (5, "B"), ("eb", "maj"): (5, "B"), ("a#", "maj"): (6, "B"),
+    ("bb", "maj"): (6, "B"), ("f", "maj"): (7, "B"),
+    ("a", "min"): (8, "A"), ("e", "min"): (9, "A"), ("b", "min"): (10, "A"),
+    ("f#", "min"): (11, "A"), ("gb", "min"): (11, "A"), ("c#", "min"): (12, "A"),
+    ("db", "min"): (12, "A"), ("g#", "min"): (1, "A"), ("ab", "min"): (1, "A"),
+    ("d#", "min"): (2, "A"), ("eb", "min"): (2, "A"), ("a#", "min"): (3, "A"),
+    ("bb", "min"): (3, "A"), ("f", "min"): (4, "A"), ("c", "min"): (5, "A"),
+    ("g", "min"): (6, "A"), ("d", "min"): (7, "A"),
+}
+
+
+def _to_camelot(key_str):
+    if not key_str:
+        return None
+    parts = str(key_str).strip().lower().split()
+    if len(parts) < 2:
+        return None
+    note, tail = parts[0], parts[1]
+    mode = "maj" if "maj" in tail else ("min" if "min" in tail else None)
+    if mode is None:
+        return None
+    return _CAMELOT.get((note, mode))
+
+
+def _camelot_label(c) -> Optional[str]:
+    return f"{c[0]}{c[1]}" if c else None
+
+
+def _camelot_distance(c1, c2) -> float:
+    """0.0 = harmonically compatible (same key, relative major/minor, or +/-1 on
+    the wheel); larger = farther. Unknown keys are neutral (0.5)."""
+    if not c1 or not c2:
+        return 0.5
+    n1, l1 = c1
+    n2, l2 = c2
+    if c1 == c2 or n1 == n2:           # same key, or relative major/minor
+        return 0.0
+    dn = min((n1 - n2) % 12, (n2 - n1) % 12)
+    if l1 == l2 and dn == 1:           # adjacent on the same ring
+        return 0.0
+    return min(1.0, dn / 6.0 + (0.0 if l1 == l2 else 0.25))
+
+
+def parse_attributes(low: str) -> dict:
+    """Pull sound/vocal constraints out of a vibe description."""
+    attrs = {"vocal": None, "gender": None, "moods": [], "instruments": []}
+    if any(w in low for w in ("instrumental", "no vocal", "no vocals", "without vocals")):
+        attrs["vocal"] = "instrumental"
+    elif any(w in low for w in ("vocal", "vocals", "sung", "acapella", "a capella")):
+        attrs["vocal"] = "vocal"
+    if re.search(r"\bfemale\b", low):
+        attrs["gender"], attrs["vocal"] = "female", attrs["vocal"] or "vocal"
+    elif re.search(r"\bmale\b", low):
+        attrs["gender"], attrs["vocal"] = "male", attrs["vocal"] or "vocal"
+    for m in _MOOD_WORDS:
+        if re.search(r"\b" + re.escape(m) + r"\b", low):
+            attrs["moods"].append(m)
+    for word, label in _INSTRUMENT_WORDS.items():
+        if re.search(r"\b" + re.escape(word) + r"\b", low) and label not in attrs["instruments"]:
+            attrs["instruments"].append(label)
+    return attrs
+
+
+def _track_attributes(store, candidates, analysis) -> dict:
+    """tid -> {vocal, gender, moods:set, instruments:set} for candidates that have
+    an AudioSet vector. Empty when tagging hasn't run (graceful no-op)."""
+    from mgc.tagging import get_audioset_labels
+    from mgc.understanding import compile_record
+
+    labels = get_audioset_labels()
+    out: dict = {}
+    if not labels:
+        return out
+    for tid in candidates:
+        u = store.get_understanding(tid)
+        if not u or u.get("audioset") is None:
+            continue
+        rec = compile_record(u["audioset"], labels, analysis=analysis.get(tid) or {})
+        out[tid] = {
+            "vocal": rec["vocal"]["voice_instrumental"],
+            "gender": rec["vocal"]["gender"],
+            "moods": set(rec["mood"].get("tags") or []),
+            "instruments": set(rec.get("instruments") or {}),
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +434,39 @@ def build_set(
             return float(a["bpm"])
         return None
 
+    # --- attribute constraints (vocal/gender/mood/instruments) ------------
+    attrs_req = parsed.get("attributes") or {}
+    has_attr_req = bool(attrs_req.get("vocal") or attrs_req.get("gender")
+                        or attrs_req.get("moods") or attrs_req.get("instruments"))
+    track_attrs = _track_attributes(store, candidates, analysis) if has_attr_req else {}
+
+    # Hard-filter on vocal/gender when we have the data and matches remain.
+    if track_attrs and (attrs_req.get("vocal") or attrs_req.get("gender")):
+        def _ok(tid: int) -> bool:
+            ta = track_attrs.get(tid)
+            if ta is None:
+                return False
+            if attrs_req.get("gender"):
+                return ta["gender"] == attrs_req["gender"]
+            return ta["vocal"] == attrs_req["vocal"] or ta["vocal"] == "uncertain"
+        eligible = [tid for tid in candidates if _ok(tid)]
+        if eligible:
+            candidates = eligible
+
+    # Camelot key per candidate (always, for harmonic continuity tie-break).
+    camelot = {tid: _to_camelot((analysis.get(tid) or {}).get("music_key")) for tid in candidates}
+
+    def attr_score(tid: int) -> float:
+        ta = track_attrs.get(tid)
+        if ta is None:
+            return 0.0
+        want = list(attrs_req.get("moods", [])) + list(attrs_req.get("instruments", []))
+        if not want:
+            return 0.0
+        hit = sum(1 for m in attrs_req.get("moods", []) if m in ta["moods"])
+        hit += sum(1 for i in attrs_req.get("instruments", []) if i in ta["instruments"])
+        return hit / len(want)
+
     n_cand = len(candidates)
     if n_cand == 0:
         return {"track_ids": [], "arc": [], "reasons": [], "parsed": parsed}
@@ -327,11 +479,13 @@ def build_set(
 
     targets = _resample_arc(parsed["energy_arc"], target_len)
 
-    # --- greedy selection by energy proximity, BPM tie-break --------------
+    # --- greedy selection: energy arc first, then attribute match, then
+    #     harmonic (Camelot) continuity, then smooth BPM -------------------
     chosen: list[int] = []
     reasons: list[str] = []
     used: set = set()
     prev_bpm: Optional[float] = None
+    prev_cam = None
 
     for target in targets:
         best = None
@@ -339,15 +493,13 @@ def build_set(
         for tid in candidates:
             if tid in used:
                 continue
-            e = energy_of(tid)
-            e_dist = abs(e - target)
+            e_dist = abs(energy_of(tid) - target)
             b = bpm_of(tid)
-            if prev_bpm is not None and b is not None:
-                bpm_dist = abs(b - prev_bpm)
-            else:
-                bpm_dist = 0.0
-            # Energy dominates; BPM proximity is the smooth-mixing tie-break.
-            key = (round(e_dist, 6), bpm_dist, tid)
+            bpm_dist = abs(b - prev_bpm) if (prev_bpm is not None and b is not None) else 0.0
+            cam_dist = _camelot_distance(prev_cam, camelot.get(tid)) if prev_cam is not None else 0.0
+            # Energy follows the arc (primary); then prefer attribute matches,
+            # then harmonically compatible keys, then a smooth BPM step.
+            key = (round(e_dist, 3), round(-attr_score(tid), 3), round(cam_dist, 3), bpm_dist, tid)
             if best_key is None or key < best_key:
                 best_key = key
                 best = tid
@@ -359,10 +511,25 @@ def build_set(
         e = energy_of(best)
         b = bpm_of(best)
         prev_bpm = b if b is not None else prev_bpm
+        prev_cam = camelot.get(best) or prev_cam
+
+        # --- per-track reason, leading with matched attributes ------------
+        bits: list[str] = []
+        ta = track_attrs.get(best)
+        if ta:
+            if attrs_req.get("gender") and ta["gender"] == attrs_req["gender"]:
+                bits.append(f"{ta['gender']} vocal")
+            elif attrs_req.get("vocal"):
+                bits.append(ta["vocal"])
+            bits.extend(m for m in attrs_req.get("moods", []) if m in ta["moods"])
+            bits.extend(i.lower() for i in attrs_req.get("instruments", []) if i in ta["instruments"])
+        base = f"energy {e:.2f}"
         if b is not None:
-            reasons.append(f"energy {e:.2f}, {int(round(b))} bpm")
-        else:
-            reasons.append(f"energy {e:.2f}")
+            base += f", {int(round(b))} bpm"
+        cam_label = _camelot_label(camelot.get(best))
+        if cam_label:
+            base += f", {cam_label}"
+        reasons.append(" · ".join([*bits, base]))
 
     return {
         "track_ids": chosen,
