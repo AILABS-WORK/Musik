@@ -729,6 +729,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         with app.state.lock:
             return {"suggestions": eng().track_suggestions(track_id)}
 
+    @app.get("/api/explain")
+    def explain(a: int, b: int):
+        """Explain why two tracks are similar: what they share and what differs."""
+        with app.state.lock:
+            return eng().explain_similarity(a, b)
+
     return app
 
 

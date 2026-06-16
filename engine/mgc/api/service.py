@@ -142,6 +142,11 @@ class Engine:
         from mgc.similarity.similar import similar_tracks
         return similar_tracks(self.store, track_id, self.classify_model, n=n)
 
+    def explain_similarity(self, a_id: int, b_id: int) -> dict:
+        """Why two tracks are alike: shared vs differing sounds/mood/tempo/key."""
+        from mgc.similarity.explain import explain_similarity
+        return explain_similarity(self.store, a_id, b_id, self.classify_model)
+
     # ---- review / confirm (active learning) --------------------------------
     def review(self, limit: int = 20) -> list:
         """Lowest-confidence suggested assignments first — what to edit."""

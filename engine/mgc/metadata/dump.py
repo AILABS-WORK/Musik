@@ -82,7 +82,7 @@ def build_from_dump(tar_path: str, out_path: str | Path | None = None,
     """Stream the four genre tables out of mbdump.tar.bz2 and write genres.json."""
     want = ["genre", "link_type", "link", "l_genre_genre"]
     rows: dict[str, list] = {k: [] for k in want}
-    with tarfile.open(tar_path, "r:bz2") as tf:
+    with tarfile.open(tar_path, "r:*") as tf:  # auto-detects bz2 / xz / gz
         for k in want:
             try:
                 member = tf.getmember(f"mbdump/{k}")
