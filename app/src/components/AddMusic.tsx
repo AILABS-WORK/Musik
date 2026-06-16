@@ -91,13 +91,19 @@ export function AddMusic({ onImport, onUploadFiles, report, compact }: AddMusicP
         onChange={(e) => onFilesChosen(e.target.files)}
       />
 
+      {!compact && <div className="addmusic__title">Add music</div>}
+
       <div className="addmusic__main">
-        <button className="btn btn--accent addmusic__browse" onClick={pickFiles}>
+        <button
+          className="btn btn--accent addmusic__browse"
+          onClick={pickFiles}
+          title="Choose audio files from your computer"
+        >
           <span className="addmusic__browse-icon" aria-hidden="true">⤓</span>
           Browse files
         </button>
         <div className="addmusic__hint">
-          <span className="addmusic__hint-strong">Drop audio anywhere</span>
+          <span className="addmusic__hint-strong">…or drop audio anywhere</span>
           <span className="addmusic__hint-dim">
             {isTauri() ? "files or folders" : "wav · mp3 · flac · aiff · m4a · ogg"}
           </span>

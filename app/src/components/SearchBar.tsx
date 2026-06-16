@@ -65,8 +65,14 @@ export function SearchBar({ onSearch, onClear, meta, active, count }: SearchBarP
 
   return (
     <div className="searchbar">
+      <div className="searchbar__title">
+        Find tracks by sound
+        <span className="searchbar__title-hint">
+          describe a vibe in plain words — no tags needed
+        </span>
+      </div>
       <div className="searchbar__row">
-        <span className="searchbar__icon" aria-hidden="true">
+        <span className="searchbar__icon" aria-hidden="true" title="Sound search">
           ⌕
         </span>
         <input
@@ -96,10 +102,19 @@ export function SearchBar({ onSearch, onClear, meta, active, count }: SearchBarP
           </span>
         </label>
 
-        <button className="btn btn--go" onClick={runSearch}>
+        <button
+          className="btn btn--go"
+          onClick={runSearch}
+          title="Find tracks that match what you described"
+        >
           Search
         </button>
-        <button className="btn" onClick={clear} disabled={!active && query === ""}>
+        <button
+          className="btn"
+          onClick={clear}
+          disabled={!active && query === ""}
+          title="Clear the search and show all tracks"
+        >
           Clear
         </button>
       </div>

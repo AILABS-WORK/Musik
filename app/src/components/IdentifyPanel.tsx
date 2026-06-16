@@ -84,6 +84,7 @@ export function IdentifyPanel({ report, onPlay }: IdentifyPanelProps) {
                     className="btn btn--play btn--xs"
                     onClick={() => onPlay(m.track_id)}
                     aria-label={`Play ${m.name}`}
+                    title={`Play “${m.name}”`}
                   >
                     ▶
                   </button>

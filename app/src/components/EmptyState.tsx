@@ -27,10 +27,11 @@ export function EmptyState({ onBrowse }: EmptyStateProps) {
     <div className="empty">
       <div className="empty__inner">
         <div className="empty__glyph" aria-hidden="true">◈</div>
-        <h1 className="empty__title">Build your sound library</h1>
+        <h1 className="empty__title">Let's build your crate</h1>
         <p className="empty__lede">
-          Musik understands your tracks by how they sound — then helps you
-          search, classify and mix them.
+          Drop in your tracks and Musik listens to each one — so you can search
+          by sound, sort into genres, and build sets in minutes. No tagging by
+          hand.
         </p>
 
         <ol className="empty__steps">

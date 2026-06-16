@@ -20,6 +20,8 @@ import { IdentifyPanel } from "./components/IdentifyPanel";
 import { MixPanel } from "./components/MixPanel";
 import { SelectionBar } from "./components/SelectionBar";
 import { EmptyState } from "./components/EmptyState";
+import { JobBanner } from "./components/JobBanner";
+import type { JobKind } from "./components/JobBanner";
 
 type MainView = "table" | "map";
 
@@ -44,7 +46,16 @@ export default function App() {
   const [busy, setBusy] = useState(false);
 
   const [progress, setProgress] = useState<Progress | null>(null);
+  // What kind of background job is running, so the banner can speak plainly
+  // ("Tagging sounds…" vs "Analyzing…"). null when idle.
+  const [jobKind, setJobKind] = useState<JobKind | null>(null);
+  // A short-lived "done"/"error" note shown after a job finishes.
+  const [jobNote, setJobNote] = useState<{ kind: JobKind; error: string | null } | null>(null);
   const embedPollRef = useRef<number | null>(null);
+  const jobNoteTimerRef = useRef<number | null>(null);
+  // Read the latest jobKind from inside the poll callback without re-creating it.
+  const jobKindRef = useRef<JobKind | null>(null);
+  jobKindRef.current = jobKind;
 
   // ---- open-vocab search ----
   const [searchResults, setSearchResults] = useState<
@@ -107,6 +118,19 @@ export default function App() {
     void refreshAll();
   }, [refreshAll]);
 
+  // Briefly surface a "done"/"error" banner after a job finishes, then clear
+  // the running job. The note auto-dismisses after a few seconds.
+  const flashJobNote = useCallback((kind: JobKind, error: string | null) => {
+    setJobNote({ kind, error });
+    if (jobNoteTimerRef.current !== null) {
+      window.clearTimeout(jobNoteTimerRef.current);
+    }
+    jobNoteTimerRef.current = window.setTimeout(
+      () => setJobNote(null),
+      error ? 9000 : 4500,
+    );
+  }, []);
+
   // ---- embed progress polling ----
   const stopEmbedPoll = useCallback(() => {
     if (embedPollRef.current !== null) {
@@ -123,21 +147,35 @@ export default function App() {
         setProgress(p);
         if (!p.running) {
           stopEmbedPoll();
+          const kind = jobKindRef.current ?? "embed";
           if (p.error) {
-            report(`embed error: ${p.error}`, true);
+            report(`${kind} error: ${p.error}`, true);
           } else {
-            report(`embed finished · ${p.done}/${p.total}`);
+            report(`${kind} finished · ${p.done}/${p.total}`);
           }
+          flashJobNote(kind, p.error);
+          setJobKind(null);
           void refreshAll();
         }
       } catch (e) {
         stopEmbedPoll();
+        setJobKind(null);
         report(`progress poll failed: ${errMsg(e)}`, true);
       }
     }, 700);
-  }, [stopEmbedPoll, report, refreshAll]);
+  }, [stopEmbedPoll, report, refreshAll, flashJobNote]);
 
   useEffect(() => stopEmbedPoll, [stopEmbedPoll]);
+
+  // Clear the job-note timer on unmount so it can't fire into a dead tree.
+  useEffect(
+    () => () => {
+      if (jobNoteTimerRef.current !== null) {
+        window.clearTimeout(jobNoteTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // ---- actions ----
   const handleScan = useCallback(async () => {
@@ -161,6 +199,8 @@ export default function App() {
       const r = await api.embed(false);
       if (r.started) {
         report("embedding…");
+        setJobKind("embed");
+        setJobNote(null);
         setProgress({ running: true, done: 0, total: 0, last: "", error: null });
         startEmbedPoll();
       } else {
@@ -182,6 +222,8 @@ export default function App() {
         const r = await api.importPaths(paths);
         report(`imported ${r.added} new track(s) from ${r.files_seen} file(s)`);
         if (r.embedding) {
+          setJobKind("embed");
+          setJobNote(null);
           setProgress({ running: true, done: 0, total: 0, last: "", error: null });
           startEmbedPoll();
         } else {
@@ -224,6 +266,8 @@ export default function App() {
         const r = await api.upload(payload);
         report(`added ${r.added} new track(s) from ${r.files_seen} file(s)`);
         if (r.embedding) {
+          setJobKind("embed");
+          setJobNote(null);
           setProgress({ running: true, done: 0, total: 0, last: "", error: null });
           startEmbedPoll();
         } else {
@@ -336,6 +380,8 @@ export default function App() {
       const r = await api.analyze();
       if (r.started) {
         report("analyzing…");
+        setJobKind("analyze");
+        setJobNote(null);
         setProgress({ running: true, done: 0, total: 0, last: "", error: null });
         startEmbedPoll();
       } else {
@@ -356,6 +402,8 @@ export default function App() {
       const r = await api.tag();
       if (r.started) {
         report("tagging…");
+        setJobKind("tag");
+        setJobNote(null);
         setProgress({ running: true, done: 0, total: 0, last: "", error: null });
         startEmbedPoll();
       } else {
@@ -363,6 +411,28 @@ export default function App() {
       }
     } catch (e) {
       report(`tag failed: ${errMsg(e)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }, [report, startEmbedPoll]);
+
+  // ---- deep pass (stems + sung-language) — reuses the progress flow ----
+  const handleDeep = useCallback(async () => {
+    setBusy(true);
+    report("starting deep analysis…");
+    try {
+      const r = await api.deep();
+      if (r.started) {
+        report("deep analysis…");
+        setJobKind("deep");
+        setJobNote(null);
+        setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+        startEmbedPoll();
+      } else {
+        report("deep not started (already running or nothing to do)");
+      }
+    } catch (e) {
+      report(`deep failed: ${errMsg(e)}`, true);
     } finally {
       setBusy(false);
     }
@@ -416,26 +486,36 @@ export default function App() {
     if (autoRunningRef.current) return;
     autoRunningRef.current = true;
     setBusy(true);
+    setJobNote(null);
     try {
       report("auto: embedding…");
+      setJobKind("embed");
+      setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.embed();
       await waitForProgress();
       report("auto: analyzing…");
+      setJobKind("analyze");
+      setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.analyze();
       await waitForProgress();
       report("auto: classifying…");
+      setJobKind("suggest");
+      setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.suggest();
       await refreshAll();
       report("auto: done");
+      flashJobNote("auto", null);
     } catch (e) {
       report(`auto-sort failed: ${errMsg(e)}`, true);
+      flashJobNote("auto", errMsg(e));
     } finally {
       stopEmbedPoll();
       setProgress(null);
+      setJobKind(null);
       setBusy(false);
       autoRunningRef.current = false;
     }
-  }, [report, waitForProgress, refreshAll, stopEmbedPoll]);
+  }, [report, waitForProgress, refreshAll, stopEmbedPoll, flashJobNote]);
 
   // ---- selection / checks ----
   const toggleCheck = useCallback((id: number) => {
@@ -611,17 +691,20 @@ export default function App() {
       <TopBar
         busy={busy}
         progress={progress}
+        jobKind={jobKind}
         report={report}
         onScan={handleScan}
         onEmbed={handleEmbed}
         onAnalyze={handleAnalyze}
         onTag={handleTag}
+        onDeep={handleDeep}
         onSuggest={handleSuggest}
         onAuto={handleAuto}
       />
 
       <div className="app__body">
         <main className="app__main">
+          <JobBanner kind={jobKind} progress={progress} note={jobNote} />
           {libraryEmpty ? (
             <div className="app__main-scroll">
               <AddMusic

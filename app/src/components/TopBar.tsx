@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Health, Progress } from "../types";
+import type { JobKind } from "./JobBanner";
 import { api } from "../api";
 
 const MODELS = ["baseline", "discogs", "mert", "clap"];
+
+/** Friendly present-tense verb for the compact top-bar progress chip. */
+const JOB_VERB: Record<JobKind, string> = {
+  embed: "listening",
+  analyze: "analyzing",
+  tag: "tagging",
+  deep: "deep-analyzing",
+  suggest: "classifying",
+  auto: "auto-sorting",
+};
 
 interface TopBarProps {
   busy: boolean;
@@ -10,10 +21,13 @@ interface TopBarProps {
   onEmbed: () => void;
   onAnalyze: () => void;
   onTag: () => void;
+  onDeep: () => void;
   onSuggest: () => void;
   onAuto: () => void;
   /** Live embed progress; null when no embed has run / not running. */
   progress: Progress | null;
+  /** Which background job is running, for a plain-language label. */
+  jobKind?: JobKind | null;
   /** Bubble a status string (and error flag) up to the shared status bar. */
   report: (msg: string, isError?: boolean) => void;
   /** Notify parent of config so it can react (e.g. show library path). */
@@ -26,9 +40,11 @@ export function TopBar({
   onEmbed,
   onAnalyze,
   onTag,
+  onDeep,
   onSuggest,
   onAuto,
   progress,
+  jobKind,
   report,
   onConfigLoaded,
 }: TopBarProps) {
@@ -127,7 +143,7 @@ export function TopBar({
       <div className="topbar__row">
         <div className="brand">
           <span className="brand__logo">Musik</span>
-          <span className="brand__sub">music hub</span>
+          <span className="brand__sub">your DJ crate, organized by sound</span>
         </div>
 
         <div className={healthClass(offline)}>
@@ -182,6 +198,14 @@ export function TopBar({
             title="Compute AudioSet-527 sound tags in the background"
           >
             Tag
+          </button>
+          <button
+            className="btn btn--accent"
+            onClick={onDeep}
+            disabled={busy || embedRunning}
+            title="Deep pass: separate stems for finer percussion + detect sung language (slower, GPU)"
+          >
+            Deep
           </button>
         </div>
 
@@ -250,12 +274,20 @@ export function TopBar({
       </div>
 
       {embedRunning && (
-        <div className="progress">
+        <div className="progress" role="status" aria-live="polite">
           <span className="progress__label">
-            embedding {done}/{total}
+            {jobKind ? JOB_VERB[jobKind] : "working"}{" "}
+            {total > 0 ? `${done}/${total}` : "…"}
           </span>
           <div className="progress__track">
-            <div className="progress__fill" style={{ width: `${pct}%` }} />
+            <div
+              className={
+                total > 0
+                  ? "progress__fill"
+                  : "progress__fill progress__fill--indeterminate"
+              }
+              style={total > 0 ? { width: `${pct}%` } : undefined}
+            />
           </div>
           <span className="progress__last" title={progress?.last ?? ""}>
             {progress?.last || "…"}

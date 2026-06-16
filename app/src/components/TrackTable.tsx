@@ -76,8 +76,14 @@ export function TrackTable({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           style={{ minWidth: 200 }}
+          aria-label="Filter tracks by name"
+          title="Type to narrow the list by track name"
         />
-        <button className="btn" onClick={cycleSort}>
+        <button
+          className="btn"
+          onClick={cycleSort}
+          title="Sort tracks by classification confidence (click to cycle)"
+        >
           {sortLabel}
         </button>
         <div className="spacer" />
@@ -245,6 +251,7 @@ export function TrackTable({
                       className="btn btn--play btn--xs"
                       onClick={() => onPlay(t.id)}
                       aria-label={`Play ${t.name}`}
+                      title={`Play “${t.name}”`}
                     >
                       ▶
                     </button>

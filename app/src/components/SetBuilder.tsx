@@ -142,6 +142,7 @@ export function SetBuilder({ report, onPlayQueue, onPlay }: SetBuilderProps) {
               className="btn btn--accent btn--xs"
               onClick={() => onPlayQueue(result.trackIds)}
               disabled={result.trackIds.length === 0}
+              title="Play the whole set in order, auto-advancing"
             >
               ▶ Play set
             </button>
@@ -164,6 +165,7 @@ export function SetBuilder({ report, onPlayQueue, onPlay }: SetBuilderProps) {
                         className="btn btn--play btn--xs"
                         onClick={() => onPlay(id)}
                         aria-label={`Play ${name}`}
+                        title={`Play “${name}”`}
                       >
                         ▶
                       </button>

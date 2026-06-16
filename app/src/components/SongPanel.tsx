@@ -151,6 +151,7 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
         className="btn btn--play btn--xs"
         onClick={() => onPlay(track.id)}
         aria-label={`Play ${track.name}`}
+        title={`Play “${track.name}”`}
       >
         ▶
       </button>

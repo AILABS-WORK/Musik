@@ -49,6 +49,7 @@ export function SimilarPanel({
                 className="btn btn--play btn--xs"
                 onClick={() => onPlay(it.track_id)}
                 aria-label={`Play ${it.name}`}
+                title={`Play “${it.name}”`}
               >
                 ▶
               </button>
