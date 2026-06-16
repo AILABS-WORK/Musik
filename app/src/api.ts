@@ -31,6 +31,10 @@ export const api = {
   upload: (files: { name: string; data_base64: string }[]) =>
     req<{ added: number; files_seen: number; total: number; embedding: boolean }>(
       "POST", "/api/upload", { files }),
+  /** Identify a recorded clip (base64 wav) against the library, no import. */
+  identifyUpload: (name: string, data_base64: string, n = 5) =>
+    req<{ matches: { track_id: number; name: string; score: number }[]; error?: string }>(
+      "POST", "/api/identify-upload", { name, data_base64, n }),
   progress: () => req<Progress>("GET", "/api/progress"),
 
   tracks: () => req<Track[]>("GET", "/api/tracks"),
@@ -74,6 +78,10 @@ export const api = {
       "POST", "/api/identify-mix", { path }),
   region: (artist: string, title?: string) =>
     req<{ region: Record<string, unknown> }>("POST", "/api/region", { artist, title: title ?? null }),
+  /** Seed by-example genres from MusicBrainz labels on your own tracks (background). */
+  mbSeed: () => req<{ started: boolean }>("POST", "/api/mb/seed"),
+  mbLookup: (artist: string, title?: string) =>
+    req<{ result: Record<string, unknown> }>("POST", "/api/mb/lookup", { artist, title: title ?? null }),
 
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),

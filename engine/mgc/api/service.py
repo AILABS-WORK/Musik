@@ -218,6 +218,16 @@ class Engine:
         from mgc.deep import deep_analyze_all
         return deep_analyze_all(self.store, progress=progress)
 
+    # ---- MusicBrainz metadata + genre seeding ------------------------------
+    def mb_lookup(self, artist: str, title: Optional[str] = None) -> dict:
+        from mgc.metadata import mb_lookup
+        return mb_lookup(artist, title)
+
+    def seed_from_musicbrainz(self, min_examples: int = 3, progress=None) -> dict:
+        from mgc.metadata import seed_genres_from_mb
+        return seed_genres_from_mb(self.store, self.model,
+                                   min_examples=min_examples, progress=progress)
+
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
         ids = radio_queue(self.store, track_id, self.model, n=n)

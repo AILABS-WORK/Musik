@@ -6,8 +6,8 @@ Public surface:
     - ``embed_track`` for cached, windowed per-track embedding.
 
 Only the baseline backend imports light deps eagerly; the heavy backends
-(discogs/mert/clap) are imported lazily inside :func:`get_embedder` and raise a
-``RuntimeError`` with an install hint when their ML deps are missing.
+(discogs/mert/muq/clap) are imported lazily inside :func:`get_embedder` and
+raise a ``RuntimeError`` with an install hint when their ML deps are missing.
 """
 
 from __future__ import annotations
@@ -25,14 +25,15 @@ __all__ = [
     "BaselineEmbedder",
 ]
 
-_KNOWN = {"baseline", "discogs", "mert", "clap"}
+_KNOWN = {"baseline", "discogs", "mert", "muq", "clap"}
 
 
 def get_embedder(name: str) -> Embedder:
     """Return an embedder instance by ``name``.
 
-    ``"baseline"`` is always available. ``"discogs"``/``"mert"``/``"clap"`` are
-    loaded lazily and raise ``RuntimeError`` if their heavy deps are missing.
+    ``"baseline"`` is always available. ``"discogs"``/``"mert"``/``"muq"``/
+    ``"clap"`` are loaded lazily and raise ``RuntimeError`` if their heavy deps
+    are missing.
     Any unknown name raises ``ValueError``.
     """
     key = (name or "").lower()
@@ -48,6 +49,11 @@ def get_embedder(name: str) -> Embedder:
 
         mert._check_deps()
         return mert.MertEmbedder()
+    if key == "muq":
+        from mgc.embed import muq
+
+        muq._check_deps()
+        return muq.MuQEmbedder()
     if key == "clap":
         from mgc.embed import clap
 

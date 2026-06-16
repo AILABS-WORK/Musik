@@ -70,6 +70,13 @@ class UploadIn(BaseModel):
     files: list[dict]
 
 
+class IdentifyUploadIn(BaseModel):
+    # phone/mic recording: base64 audio identified against the library (NOT imported)
+    name: str = "clip.wav"
+    data_base64: str
+    n: int = 5
+
+
 class SetBuildIn(BaseModel):
     description: str
     length: Optional[int] = None
@@ -95,6 +102,11 @@ class SearchIn(BaseModel):
     query: str
     n: int = 50
     threshold: Optional[float] = None
+
+
+class MBLookupIn(BaseModel):
+    artist: str
+    title: Optional[str] = None
 
 
 def _track_dict(engine: Engine, t) -> dict:
@@ -278,6 +290,35 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         if not saved:
             return {"added": 0, "files_seen": 0, "total": eng().store.count_tracks(), "embedding": False}
         return import_paths(ImportIn(paths=saved, embed=True))
+
+    @app.post("/api/identify-upload")
+    def identify_upload(body: IdentifyUploadIn):
+        """Identify a recorded clip against the library WITHOUT importing it
+        (the phone 'what's this / what are they mixing' primitive)."""
+        import base64
+        import os
+        import tempfile
+
+        try:
+            raw = base64.b64decode((body.data_base64 or "").split(",")[-1])
+        except Exception:
+            return {"matches": []}
+        ext = os.path.splitext(body.name)[1] or ".wav"
+        fd, tmp = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        with open(tmp, "wb") as fh:
+            fh.write(raw)
+        try:
+            with app.state.lock:
+                matches = eng().identify(tmp, n=body.n)
+        except Exception as ex:
+            return {"matches": [], "error": str(ex)[:160]}
+        finally:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+        return {"matches": matches}
 
     @app.get("/api/progress")
     def progress():
@@ -536,6 +577,40 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """Deep-analyze a single track now (blocking)."""
         with app.state.lock:
             return eng().deep_analyze(track_id)
+
+    # ---- MusicBrainz: seed genres from authoritative labels ----------------
+    def start_mb_seed() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            from mgc.metadata import seed_genres_from_mb
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="seeding genres from MusicBrainz…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                with app.state.lock:
+                    created = seed_genres_from_mb(eng().store, eng().model, progress=prog)
+                p["last"] = f"seeded {len(created)} genres from MusicBrainz"
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/mb/seed")
+    def mb_seed():
+        """Seed by-example genres from MusicBrainz labels on your own tracks (background)."""
+        return {"started": start_mb_seed()}
+
+    @app.post("/api/mb/lookup")
+    def mb_lookup_ep(body: MBLookupIn):
+        """MusicBrainz metadata (genres/tags/year/region) for an artist [+ title]."""
+        return {"result": eng().mb_lookup(body.artist, body.title)}
 
     return app
 
