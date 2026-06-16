@@ -180,6 +180,27 @@ class Engine:
         from mgc.identify.identify import lookup_region
         return lookup_region(artist, title)
 
+    # ---- AudioSet tagging + open-vocab search ------------------------------
+    def tag_all(self, progress=None) -> int:
+        from mgc.tagging import tag_all
+        return tag_all(self.store, progress=progress)
+
+    def search(self, query: str, n: int = 50, threshold=None) -> dict:
+        from mgc.search import search
+        return search(self.store, query, n=n, threshold=threshold)
+
+    def understanding(self, track_id: int) -> Optional[dict]:
+        from mgc.tagging import get_audioset_labels, top_tags
+        u = self.store.get_understanding(track_id)
+        if not u:
+            return None
+        labels = get_audioset_labels() or []
+        tags = top_tags(u["audioset"], labels) if (u.get("audioset") is not None and labels) else []
+        return {"track_id": track_id, "top_tags": tags,
+                "instruments": u.get("instruments"), "vocal": u.get("vocal"),
+                "mood": u.get("mood"), "caption": u.get("caption"),
+                "tags_canonical": u.get("tags_canonical"), "deep_done": u.get("deep_done")}
+
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
         ids = radio_queue(self.store, track_id, self.model, n=n)

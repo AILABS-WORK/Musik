@@ -361,3 +361,58 @@ class Store:
             d["extra"] = json.loads(d["extra"]) if d["extra"] else {}
             out[d["track_id"]] = d
         return out
+
+    # ---- understanding (AudioSet tags + rich per-song record) --------------
+    def save_understanding(self, track_id: int, audioset=None, audioset_model: Optional[str] = None,
+                           instruments: Optional[dict] = None, vocal: Optional[dict] = None,
+                           mood: Optional[dict] = None, caption: Optional[str] = None,
+                           tags_canonical: Optional[list] = None, deep_done: Optional[int] = None) -> None:
+        """Upsert the understanding row, updating only the provided fields."""
+        cur = self.get_understanding(track_id) or {}
+        av = vec_to_blob(audioset) if audioset is not None else (
+            self.conn.execute("SELECT audioset FROM understanding WHERE track_id=?", (track_id,)).fetchone() or [None])[0]
+        self.conn.execute(
+            """INSERT INTO understanding(track_id, audioset, audioset_model, instruments, vocal,
+                                         mood, caption, tags_canonical, deep_done, updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+               ON CONFLICT(track_id) DO UPDATE SET
+                 audioset=excluded.audioset, audioset_model=excluded.audioset_model,
+                 instruments=excluded.instruments, vocal=excluded.vocal, mood=excluded.mood,
+                 caption=excluded.caption, tags_canonical=excluded.tags_canonical,
+                 deep_done=excluded.deep_done, updated_at=CURRENT_TIMESTAMP""",
+            (track_id, av, audioset_model if audioset_model is not None else cur.get("audioset_model"),
+             json.dumps(instruments) if instruments is not None else (json.dumps(cur["instruments"]) if cur.get("instruments") else None),
+             json.dumps(vocal) if vocal is not None else (json.dumps(cur["vocal"]) if cur.get("vocal") else None),
+             json.dumps(mood) if mood is not None else (json.dumps(cur["mood"]) if cur.get("mood") else None),
+             caption if caption is not None else cur.get("caption"),
+             json.dumps(tags_canonical) if tags_canonical is not None else (json.dumps(cur["tags_canonical"]) if cur.get("tags_canonical") else None),
+             deep_done if deep_done is not None else cur.get("deep_done", 0)),
+        )
+        self.conn.commit()
+
+    def get_understanding(self, track_id: int) -> Optional[dict]:
+        row = self.conn.execute("SELECT * FROM understanding WHERE track_id=?", (track_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["audioset"] = blob_to_vec(d["audioset"]) if d["audioset"] is not None else None
+        for k in ("instruments", "vocal", "mood", "tags_canonical"):
+            d[k] = json.loads(d[k]) if d[k] else None
+        return d
+
+    def has_audioset(self, track_id: int) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM understanding WHERE track_id=? AND audioset IS NOT NULL", (track_id,)
+        ).fetchone()
+        return row is not None
+
+    def load_audioset_matrix(self) -> tuple[list[int], np.ndarray]:
+        """Return (track_ids, matrix[n, 527]) of stored AudioSet probability vectors."""
+        rows = self.conn.execute(
+            "SELECT track_id, audioset FROM understanding WHERE audioset IS NOT NULL ORDER BY track_id"
+        ).fetchall()
+        if not rows:
+            return [], np.zeros((0, 0), dtype=np.float32)
+        ids = [r["track_id"] for r in rows]
+        mat = np.stack([blob_to_vec(r["audioset"]) for r in rows]).astype(np.float32)
+        return ids, mat

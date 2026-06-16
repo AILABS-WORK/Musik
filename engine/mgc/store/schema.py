@@ -88,6 +88,20 @@ CREATE TABLE IF NOT EXISTS analysis (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS understanding (
+    track_id        INTEGER PRIMARY KEY,
+    audioset        BLOB,          -- float32[527] AudioSet probability vector
+    audioset_model  TEXT,          -- 'ast' | 'efficientat'
+    instruments     TEXT,          -- JSON {name: prob}
+    vocal           TEXT,          -- JSON {voice_instrumental, gender, language, ...}
+    mood            TEXT,          -- JSON {arousal, valence, tags, scores}
+    caption         TEXT,
+    tags_canonical  TEXT,          -- JSON list
+    deep_done       INTEGER DEFAULT 0,
+    updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_genres_parent ON genres(parent_id);
 CREATE INDEX IF NOT EXISTS idx_exemplars_genre ON exemplars(genre_id);
 CREATE INDEX IF NOT EXISTS idx_actions_status ON actions_log(status);

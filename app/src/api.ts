@@ -46,6 +46,13 @@ export const api = {
   project: (method = "pca") => req<{ points: any[] }>("GET", `/api/project?method=${method}`),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
+  tag: () => req<{ started: boolean }>("POST", "/api/tag"),
+  search: (query: string, threshold?: number | null, n = 80) =>
+    req<{ results: { track_id: number; name: string; score: number }[]; method: string; matched_label?: string | null; note?: string }>(
+      "POST", "/api/search", { query, n, threshold: threshold ?? null }),
+  understanding: (id: number) =>
+    req<{ track_id: number; top_tags: { label: string; prob: number }[]; vocal?: any; mood?: any; caption?: string | null }>(
+      "GET", `/api/understanding/${id}`),
   buildSet: (description: string, length?: number | null) =>
     req<{ track_ids: number[]; names: string[]; arc: number[]; reasons: string[]; parsed: any }>(
       "POST", "/api/set-build", { description, length: length ?? null }),

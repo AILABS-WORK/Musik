@@ -86,6 +86,12 @@ class RegionIn(BaseModel):
     title: Optional[str] = None
 
 
+class SearchIn(BaseModel):
+    query: str
+    n: int = 50
+    threshold: Optional[float] = None
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -113,6 +119,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.state.config = config or Config()
     app.state.lock = threading.Lock()
     app.state.progress = {"running": False, "done": 0, "total": 0, "last": "", "error": None}
+    app.state.tagger = None  # cached AudioSet tagger (lazy, loaded on first /api/tag)
     app.state.engine = Engine(app.state.config, check_same_thread=False)
 
     def eng() -> Engine:
@@ -417,6 +424,47 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def region(body: RegionIn):
         """Artist region/origin via MusicBrainz metadata (network, best-effort)."""
         return {"region": eng().region(body.artist, body.title)}
+
+    # ---- AudioSet tagging + open-vocab search ------------------------------
+    def start_tagging() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            from mgc.tagging import AudioSetTagger, tag_all
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="tagging…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                if app.state.tagger is None:
+                    app.state.tagger = AudioSetTagger()
+                with app.state.lock:
+                    tag_all(eng().store, tagger=app.state.tagger, progress=prog)
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/tag")
+    def tag():
+        """Compute AudioSet-527 tags for untagged tracks (background)."""
+        return {"started": start_tagging()}
+
+    @app.post("/api/search")
+    def search_ep(body: SearchIn):
+        """Open-vocabulary attribute search ('songs with cowbells')."""
+        with app.state.lock:
+            return eng().search(body.query, n=body.n, threshold=body.threshold)
+
+    @app.get("/api/understanding/{track_id}")
+    def understanding_ep(track_id: int):
+        with app.state.lock:
+            return eng().understanding(track_id) or {"track_id": track_id, "top_tags": []}
 
     return app
 
