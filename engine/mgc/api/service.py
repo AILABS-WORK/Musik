@@ -200,10 +200,23 @@ class Engine:
         tags = top_tags(vec, labels) if labels else []
         analysis = self.store.get_analysis(track_id) or {}
         rec = compile_record(vec, labels, analysis=analysis) if labels else {}
+        vocal = dict(rec.get("vocal") or {})
+        stored_vocal = u.get("vocal") if isinstance(u.get("vocal"), dict) else {}
+        if stored_vocal and stored_vocal.get("language"):  # from the deep pass (Whisper)
+            vocal["language"] = stored_vocal["language"]
+            vocal["language_conf"] = stored_vocal.get("language_conf")
         return {"track_id": track_id, "top_tags": tags,
-                "instruments": rec.get("instruments"), "vocal": rec.get("vocal"),
+                "instruments": rec.get("instruments"), "vocal": vocal,
                 "mood": rec.get("mood"), "caption": rec.get("caption"),
                 "tags_canonical": rec.get("tags_canonical"), "deep_done": u.get("deep_done")}
+
+    def deep_analyze(self, track_id: int) -> dict:
+        from mgc.deep import deep_analyze
+        return deep_analyze(self.store, track_id)
+
+    def deep_analyze_all(self, progress=None) -> int:
+        from mgc.deep import deep_analyze_all
+        return deep_analyze_all(self.store, progress=progress)
 
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue

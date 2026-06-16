@@ -500,6 +500,43 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         with app.state.lock:
             return eng().understanding(track_id) or {"track_id": track_id, "top_tags": []}
 
+    # ---- deep pass (stem separation + sung-language ID) --------------------
+    def start_deep() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            from mgc.deep import deep_analyze_all
+            from mgc.tagging import AudioSetTagger
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="deep analysis…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                if app.state.tagger is None:
+                    app.state.tagger = AudioSetTagger()
+                with app.state.lock:
+                    deep_analyze_all(eng().store, tagger=app.state.tagger, progress=prog)
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/deep")
+    def deep():
+        """Deep-analyze all tagged tracks (stems + language) in the background."""
+        return {"started": start_deep()}
+
+    @app.post("/api/deep/{track_id}")
+    def deep_one(track_id: int):
+        """Deep-analyze a single track now (blocking)."""
+        with app.state.lock:
+            return eng().deep_analyze(track_id)
+
     return app
 
 

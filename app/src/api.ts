@@ -51,6 +51,10 @@ export const api = {
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),
+  deep: () => req<{ started: boolean }>("POST", "/api/deep"),
+  deepOne: (id: number) =>
+    req<{ ok: boolean; stems?: string[]; language?: { language: string; confidence: number } | null }>(
+      "POST", `/api/deep/${id}`),
   search: (query: string, threshold?: number | null, n = 80) =>
     req<{ results: { track_id: number; name: string; score: number }[]; method: string; matched_label?: string | null; note?: string }>(
       "POST", "/api/search", { query, n, threshold: threshold ?? null }),
