@@ -96,6 +96,13 @@ export const api = {
   segments: (genreId?: number) =>
     req<{ segments: { id: number; track_id: number; start: number; end: number; label: string | null; note: string | null }[] }>(
       "GET", `/api/segments${genreId != null ? `?genre_id=${genreId}` : ""}`),
+  segmentMakeGenre: (b: { track_id: number; start: number; end: number; name: string; parent_id?: number | null; n?: number }) =>
+    req<{ ok: boolean; genre_id?: number; examples?: number[]; matches?: { track_id: number; name: string; score: number }[] }>(
+      "POST", "/api/segment/make-genre", b),
+  // ---- the genre blend (multi-label with scores) ----
+  trackSuggestions: (id: number) =>
+    req<{ suggestions: { genre_id: number; name: string; confidence: number; rank: number }[] }>(
+      "GET", `/api/track/${id}/suggestions`),
 
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),

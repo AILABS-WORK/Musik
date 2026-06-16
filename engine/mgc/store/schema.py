@@ -102,6 +102,20 @@ CREATE TABLE IF NOT EXISTS understanding (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+-- top-N genre suggestions per track (a track can be a blend): the primary is the
+-- stored assignment; these are the alternatives with their scores, for relabeling.
+CREATE TABLE IF NOT EXISTS suggestions (
+    track_id   INTEGER NOT NULL,
+    genre_id   INTEGER NOT NULL,
+    confidence REAL NOT NULL,
+    rank       INTEGER NOT NULL,
+    method     TEXT,
+    PRIMARY KEY (track_id, genre_id),
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+    FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_suggestions_track ON suggestions(track_id, rank);
+
 -- per-window embeddings (the "segment index"): lets us find tracks that contain
 -- a part that sounds like a selected region of another track.
 CREATE TABLE IF NOT EXISTS segment_embeddings (

@@ -406,6 +406,26 @@ class Store:
         ).fetchone()
         return row is not None
 
+    # ---- multi-label genre suggestions ------------------------------------
+    def save_suggestions(self, track_id: int, items: list) -> None:
+        """items: list of (genre_id, confidence, method), best first."""
+        self.conn.execute("DELETE FROM suggestions WHERE track_id=?", (track_id,))
+        for rank, (gid, conf, method) in enumerate(items):
+            if gid is None:
+                continue
+            self.conn.execute(
+                "INSERT OR REPLACE INTO suggestions(track_id, genre_id, confidence, rank, method) VALUES(?,?,?,?,?)",
+                (track_id, gid, float(conf), rank, method),
+            )
+        self.conn.commit()
+
+    def get_suggestions(self, track_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT s.genre_id, s.confidence, s.rank, s.method, g.name, g.parent_id
+               FROM suggestions s JOIN genres g ON g.id = s.genre_id
+               WHERE s.track_id=? ORDER BY s.rank""", (track_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     # ---- segment index + labeled segment exemplars ------------------------
     def clear_segment_index(self, model: str, track_id: Optional[int] = None) -> None:
         if track_id is None:

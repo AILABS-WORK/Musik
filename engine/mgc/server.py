@@ -125,6 +125,15 @@ class SegmentSaveIn(BaseModel):
     genre_id: Optional[int] = None
 
 
+class SegmentGenreIn(BaseModel):
+    track_id: int
+    start: float
+    end: float
+    name: str
+    parent_id: Optional[int] = None
+    n: int = 8
+
+
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
     genre_name, confidence, status = None, None, None
@@ -705,6 +714,20 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def segments_list(genre_id: Optional[int] = None):
         with app.state.lock:
             return {"segments": eng().list_segments(genre_id)}
+
+    @app.post("/api/segment/make-genre")
+    def segment_make_genre(body: SegmentGenreIn):
+        """Define a subgenre by a sound: seed a by-example genre from the tracks
+        that contain a part like [start,end] of this track."""
+        with app.state.lock:
+            return eng().create_genre_from_segment(body.track_id, body.start, body.end,
+                                                   body.name, parent_id=body.parent_id, n=body.n)
+
+    @app.get("/api/track/{track_id}/suggestions")
+    def track_suggestions(track_id: int):
+        """The genre blend (top-N with scores) for a track."""
+        with app.state.lock:
+            return {"suggestions": eng().track_suggestions(track_id)}
 
     return app
 

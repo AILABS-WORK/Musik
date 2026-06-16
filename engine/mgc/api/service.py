@@ -124,7 +124,14 @@ class Engine:
                     top = suggestions[0]
                     self.store.set_assignment(tid, top.genre_id, top.confidence,
                                               top.method, status="suggested")
+                    # keep the full blend (alternatives + scores) for relabeling
+                    self.store.save_suggestions(
+                        tid, [(s.genre_id, s.confidence, s.method) for s in suggestions])
         return out
+
+    def track_suggestions(self, track_id: int) -> list:
+        """The genre blend for a track: [{genre_id, name, confidence, rank, ...}], best first."""
+        return self.store.get_suggestions(track_id)
 
     # ---- clustering + similarity -------------------------------------------
     def cluster(self, min_cluster_size: int = 2):
@@ -288,6 +295,27 @@ class Engine:
         for r in rows:
             r.pop("vector", None)  # don't ship the raw vector
         return rows
+
+    def create_genre_from_segment(self, track_id: int, start: float, end: float, name: str,
+                                  parent_id: Optional[int] = None, n: int = 8,
+                                  level: str = "subgenre") -> dict:
+        """Define a subgenre by a SOUND: embed the region, find the tracks that
+        contain that part, and seed a by-example genre from them (+ the source)."""
+        from mgc.segments import embed_segment, find_similar_segments
+        track = self.store.get_track(track_id)
+        if not track:
+            return {"ok": False, "error": "no such track"}
+        q = embed_segment(track.path, start, end, self.model)
+        matches = find_similar_segments(self.store, q, self.model, n=n)
+        examples, seen = [], set()
+        for tid in [track_id, *[m["track_id"] for m in matches]]:
+            if tid not in seen:
+                seen.add(tid)
+                examples.append(tid)
+        gid = self.add_genre_by_example(name, examples, parent_id=parent_id, level=level)
+        self.store.save_segment_exemplar(track_id, self.model, start, end, q,
+                                         label=name, genre_id=gid)
+        return {"ok": True, "genre_id": gid, "examples": examples, "matches": matches}
 
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
