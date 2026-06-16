@@ -453,6 +453,28 @@ export default function App() {
     }
   }, [report, startEmbedPoll]);
 
+  // ---- fuse (sharper grouping) — reuses the progress flow ----
+  const handleFuse = useCallback(async () => {
+    setBusy(true);
+    report("starting fusion…");
+    try {
+      const r = await api.fuse();
+      if (r.started) {
+        report("fusing…");
+        setJobKind("fuse");
+        setJobNote(null);
+        setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+        startEmbedPoll();
+      } else {
+        report("fuse not started (already running or nothing to do)");
+      }
+    } catch (e) {
+      report(`fuse failed: ${errMsg(e)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }, [report, startEmbedPoll]);
+
   // ---- open-vocab search ----
   const handleSearch = useCallback(
     async (query: string, threshold: number | null) => {
@@ -719,6 +741,7 @@ export default function App() {
         onAnalyze={handleAnalyze}
         onTag={handleTag}
         onDeep={handleDeep}
+        onFuse={handleFuse}
         onSuggest={handleSuggest}
         onAuto={handleAuto}
       />

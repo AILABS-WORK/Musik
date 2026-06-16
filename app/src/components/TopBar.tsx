@@ -11,6 +11,7 @@ const JOB_VERB: Record<JobKind, string> = {
   analyze: "analyzing",
   tag: "tagging",
   deep: "deep-analyzing",
+  fuse: "fusing",
   suggest: "classifying",
   auto: "auto-sorting",
 };
@@ -22,6 +23,7 @@ interface TopBarProps {
   onAnalyze: () => void;
   onTag: () => void;
   onDeep: () => void;
+  onFuse: () => void;
   onSuggest: () => void;
   onAuto: () => void;
   /** Live embed progress; null when no embed has run / not running. */
@@ -41,6 +43,7 @@ export function TopBar({
   onAnalyze,
   onTag,
   onDeep,
+  onFuse,
   onSuggest,
   onAuto,
   progress,
@@ -211,6 +214,14 @@ export function TopBar({
 
         <div className="btn-group" role="group" aria-label="Classify">
           <span className="btn-group__label">Classify</span>
+          <button
+            className="btn btn--accent"
+            onClick={onFuse}
+            disabled={busy || embedRunning}
+            title="Fuse the sound embedding with tags, CLAP and tempo for sharper grouping"
+          >
+            Fuse
+          </button>
           <button
             className="btn btn--accent"
             onClick={onSuggest}
