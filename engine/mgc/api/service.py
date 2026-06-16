@@ -28,6 +28,33 @@ class Engine:
         return self.config.active_model
 
     @property
+    def classify_model(self) -> str:
+        """Grouping/classification runs on the fused space once it's been built,
+        otherwise on the base embedding model."""
+        try:
+            from mgc.fusion import FUSED_MODEL
+            ids, _ = self.store.load_matrix(FUSED_MODEL)
+            if ids:
+                return FUSED_MODEL
+        except Exception:
+            pass
+        return self.model
+
+    def fuse(self, progress=None) -> int:
+        """Build fused vectors (base + CLAP + AudioSet tags + tempo/energy) and
+        rebuild every genre centroid in that richer space."""
+        from mgc.fusion import FUSED_MODEL, build_fused
+        from mgc.registry.centroids import recompute_centroid
+        n = build_fused(self.store, self.model, progress=progress)
+        if n:
+            for g in self.store.iter_genres():
+                try:
+                    recompute_centroid(self.store, g.id, FUSED_MODEL)
+                except Exception:
+                    pass
+        return n
+
+    @property
     def embedder(self):
         if self._embedder is None:
             from mgc.embed import get_embedder
@@ -78,18 +105,18 @@ class Engine:
     def add_genre_by_example(self, name: str, track_ids: list[int],
                              parent_id: Optional[int] = None, level: str = "subgenre") -> int:
         from mgc.registry.centroids import create_genre_by_example
-        return create_genre_by_example(self.store, name, track_ids, self.model,
+        return create_genre_by_example(self.store, name, track_ids, self.classify_model,
                                        parent_id=parent_id, level=level)
 
     # ---- classification -----------------------------------------------------
     def suggest(self, track_id: int) -> list[Suggestion]:
         from mgc.classify.classifier import suggest
-        return suggest(self.store, track_id, self.model,
+        return suggest(self.store, track_id, self.classify_model,
                        top_k=self.config.top_k, threshold=self.config.confidence_threshold)
 
     def suggest_all(self, persist: bool = True) -> dict[int, list[Suggestion]]:
         from mgc.classify.classifier import suggest_all
-        out = suggest_all(self.store, self.model,
+        out = suggest_all(self.store, self.classify_model,
                           top_k=self.config.top_k, threshold=self.config.confidence_threshold)
         if persist:
             for tid, suggestions in out.items():
@@ -102,11 +129,11 @@ class Engine:
     # ---- clustering + similarity -------------------------------------------
     def cluster(self, min_cluster_size: int = 2):
         from mgc.cluster.cluster import cluster_tracks
-        return cluster_tracks(self.store, self.model, min_cluster_size=min_cluster_size)
+        return cluster_tracks(self.store, self.classify_model, min_cluster_size=min_cluster_size)
 
     def similar(self, track_id: int, n: int = 10):
         from mgc.similarity.similar import similar_tracks
-        return similar_tracks(self.store, track_id, self.model, n=n)
+        return similar_tracks(self.store, track_id, self.classify_model, n=n)
 
     # ---- review / confirm (active learning) --------------------------------
     def review(self, limit: int = 20) -> list:
@@ -225,12 +252,16 @@ class Engine:
 
     def seed_from_musicbrainz(self, min_examples: int = 3, progress=None) -> dict:
         from mgc.metadata import seed_genres_from_mb
-        return seed_genres_from_mb(self.store, self.model,
+        return seed_genres_from_mb(self.store, self.classify_model,
                                    min_examples=min_examples, progress=progress)
+
+    def related_genres(self, genre: str, n: int = 25) -> list:
+        from mgc.metadata import get_graph
+        return get_graph().related(genre, limit=n)
 
     def radio(self, track_id: int, n: int = 20) -> list:
         from mgc.similarity.similar import radio_queue
-        ids = radio_queue(self.store, track_id, self.model, n=n)
+        ids = radio_queue(self.store, track_id, self.classify_model, n=n)
         out = []
         for tid in ids:
             t = self.store.get_track(tid)

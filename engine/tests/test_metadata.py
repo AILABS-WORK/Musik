@@ -58,3 +58,33 @@ def test_seed_skips_existing_genres(tmp_store, tmp_path, make_tone):
     created = seed_genres_from_mb(tmp_store, "baseline",
                                   resolve=lambda _t: ["House"], min_examples=2)
     assert created == {}  # already exists -> skipped
+
+
+def test_genre_graph_related_expansion():
+    from mgc.metadata import GenreGraph
+
+    g = GenreGraph(
+        genres=["house", "deep house", "tech house", "techno"],
+        edges=[
+            {"from": "deep house", "to": "house", "rel": "subgenre"},
+            {"from": "tech house", "to": "house", "rel": "subgenre"},
+            {"from": "tech house", "to": "techno", "rel": "fusion"},
+        ],
+    )
+    assert g.children("house") == ["deep house", "tech house"] or set(g.children("house")) == {"deep house", "tech house"}
+    assert g.parents("deep house") == ["house"]
+    rel = {r["genre"] for r in g.related("house")}
+    assert "deep house" in rel and "tech house" in rel  # children are related
+    # 'techno' is reachable from house only via tech house (depth 2, fusion) -> weaker
+    rel_techno = {r["genre"] for r in g.related("deep house", max_depth=2)}
+    assert "house" in rel_techno and "tech house" in rel_techno
+
+
+def test_bundled_genre_graph_loads():
+    from mgc.metadata import get_graph
+
+    g = get_graph()
+    assert len(g.genres) > 1000          # the full MB vocabulary is bundled
+    assert g.has("deep house") and g.has("techno")
+    rel = {r["genre"] for r in g.related("house")}
+    assert "deep house" in rel and "tech house" in rel  # curated edges work

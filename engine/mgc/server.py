@@ -607,10 +607,42 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """Seed by-example genres from MusicBrainz labels on your own tracks (background)."""
         return {"started": start_mb_seed()}
 
+    def start_fuse() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="fusing embeddings…", error=None)
+
+            def prog(done, total):
+                p["done"], p["total"] = done, total
+
+            try:
+                with app.state.lock:
+                    n = eng().fuse(progress=prog)
+                p["last"] = f"fused {n} tracks"
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/fuse")
+    def fuse_ep():
+        """Build fused embeddings (base + CLAP + tags + tempo) for sharper grouping (background)."""
+        return {"started": start_fuse()}
+
     @app.post("/api/mb/lookup")
     def mb_lookup_ep(body: MBLookupIn):
         """MusicBrainz metadata (genres/tags/year/region) for an artist [+ title]."""
         return {"result": eng().mb_lookup(body.artist, body.title)}
+
+    @app.get("/api/genre/related")
+    def genre_related(genre: str, n: int = 25):
+        """Closely-related genres from the MusicBrainz genre graph (subgenre/fusion)."""
+        return {"related": eng().related_genres(genre, n=n)}
 
     return app
 

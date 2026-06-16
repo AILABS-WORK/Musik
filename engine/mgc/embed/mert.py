@@ -17,7 +17,7 @@ import os
 
 import numpy as np
 
-from mgc.embed.base import l2_normalize
+from mgc.embed.base import default_layer_weights, l2_normalize, layer_pool
 from mgc.types import Embedder
 
 _DEFAULT_MODEL = os.environ.get("MGC_MERT_MODEL", "m-a-p/MERT-v1-330M")
@@ -84,7 +84,10 @@ class MertEmbedder(Embedder):
         inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             out = model(**inputs, output_hidden_states=True)
-        # stack -> [n_layers, batch=1, time, hidden]; drop batch; mean layers+time
-        hidden = torch.stack(out.hidden_states, dim=0).squeeze(1)
-        pooled = hidden.mean(dim=(0, 1)).float().cpu().numpy().astype(np.float32)
-        return l2_normalize(pooled)
+        # stack -> [n_layers, batch=1, time, hidden]; drop batch -> [layers, time, dim]
+        hidden = torch.stack(out.hidden_states, dim=0).squeeze(1).float().cpu().numpy()
+        # Pool layers+time. Default = uniform mean (classic). MGC_LAYER_POOL=weighted
+        # emphasizes mid/late layers (timbre + genre) for sharper separation.
+        weights = (default_layer_weights(hidden.shape[0])
+                   if os.environ.get("MGC_LAYER_POOL", "mean").lower() == "weighted" else None)
+        return l2_normalize(layer_pool(hidden, weights))

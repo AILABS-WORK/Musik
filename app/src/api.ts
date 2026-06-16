@@ -56,6 +56,7 @@ export const api = {
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),
   deep: () => req<{ started: boolean }>("POST", "/api/deep"),
+  fuse: () => req<{ started: boolean }>("POST", "/api/fuse"),
   deepOne: (id: number) =>
     req<{ ok: boolean; stems?: string[]; language?: { language: string; confidence: number } | null }>(
       "POST", `/api/deep/${id}`),
@@ -82,6 +83,9 @@ export const api = {
   mbSeed: () => req<{ started: boolean }>("POST", "/api/mb/seed"),
   mbLookup: (artist: string, title?: string) =>
     req<{ result: Record<string, unknown> }>("POST", "/api/mb/lookup", { artist, title: title ?? null }),
+  relatedGenres: (genre: string, n = 25) =>
+    req<{ related: { genre: string; weight: number }[] }>(
+      "GET", `/api/genre/related?genre=${encodeURIComponent(genre)}&n=${n}`),
 
   writeTags: (dry_run: boolean) =>
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),
