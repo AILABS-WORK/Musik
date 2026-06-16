@@ -40,11 +40,16 @@ class ClapEmbedder(Embedder):
 
     def _load(self):
         if self._model is None:
+            from mgc._net import enable_os_truststore
+
+            enable_os_truststore()  # help checkpoint downloads behind TLS-inspecting proxies
             try:
                 import laion_clap  # type: ignore
+                import torch  # type: ignore
             except Exception as e:  # pragma: no cover - heavy dep missing
                 raise RuntimeError(_INSTALL_HINT) from e
-            model = laion_clap.CLAP_Module(enable_fusion=self._enable_fusion)
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = laion_clap.CLAP_Module(enable_fusion=self._enable_fusion, device=device)
             model.load_ckpt(self._ckpt) if self._ckpt else model.load_ckpt()
             self._model = model
         return self._model

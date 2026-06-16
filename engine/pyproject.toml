@@ -18,9 +18,15 @@ dependencies = [
 [project.optional-dependencies]
 # Heavy model backends — installed on demand, never required for the test suite.
 models = [
-    "torch",
+    "torch",              # install the CUDA build for your GPU (see README)
+    "torchaudio",
     "transformers",       # MERT
-    "laion-clap",         # CLAP (audio+text)
+    "safetensors",
+    "huggingface_hub",
+    "nnAudio",            # MERT-330M CQT feature
+    "einops",             # MERT remote code
+    "truststore",         # OS trust store for HF downloads behind TLS-inspecting proxies
+    "laion-clap",         # CLAP (audio+text); pins older deps — install in its own env if it conflicts
     "librosa",            # richer decode/features
     # essentia / essentia-tensorflow (Discogs-EffNet) — install per-platform; see README (Windows caveat)
 ]

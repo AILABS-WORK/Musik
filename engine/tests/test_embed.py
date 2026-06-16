@@ -93,7 +93,15 @@ def test_get_embedder_baseline():
     assert e.name == "baseline"
 
 
-def test_get_embedder_heavy_missing_raises_runtime():
+def test_get_embedder_heavy_missing_raises_runtime(monkeypatch):
+    """A heavy backend whose deps are missing surfaces a RuntimeError (install
+    hint). Monkeypatched so it's deterministic whether or not torch is present."""
+    from mgc.embed import mert
+
+    def _boom():
+        raise RuntimeError("MERT backend requires torch + transformers ...")
+
+    monkeypatch.setattr(mert, "_check_deps", _boom)
     with pytest.raises(RuntimeError):
         get_embedder("mert")
 

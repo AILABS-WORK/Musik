@@ -40,18 +40,38 @@ That's enough to run the whole pipeline on the **baseline** embedder.
 
 ### High-accuracy music models (recommended for real electronic subgenres)
 
+**Recommended: MERT** — a self-supervised *music* model, Windows-friendly,
+GPU-accelerated, and verified end-to-end through this engine (768-d for the 95M
+model / 1024-d for 330M, unit-norm, deterministic; on a quick test it separated
+similar vs different audio at cos **1.00 vs 0.56** — versus the baseline's mushy
+~0.98). It's the best default for fine electronic subgenres.
+
 ```bash
-pip install -e ".[models]"       # transformers (MERT), laion-clap, librosa, torch
+pip install -e ".[models]"       # transformers (MERT), torch, nnAudio, einops, laion-clap, …
+# GPU (RTX 5080 / Blackwell) — install the CUDA build of torch:
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
-- **GPU (your RTX 5080):** install the CUDA build of PyTorch that matches your
-  driver, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu128`
-  (Blackwell needs a recent CUDA 12.8+ wheel). Everything auto-uses the GPU.
-- **Discogs-EffNet** (best for electronic subgenres) runs via **Essentia**.
-  Essentia's Python wheels are solid on Linux/macOS but flaky on Windows — if
-  `pip install essentia-tensorflow` fails on Windows, use WSL2 for the Discogs
-  backend, or use **MERT/CLAP** (which install cleanly on Windows) until then.
-  This is the one model-packaging caveat from the design.
+Then just pick it: `mgc embed --model mert` (or set `active_model` to `mert` in
+the app's top bar). The model **auto-downloads on first use** (~400 MB for 95M,
+~1.3 GB for 330M) and **auto-uses the GPU** when available. Switch the size with
+`MGC_MERT_MODEL=m-a-p/MERT-v1-95M` (lighter) — default is the 330M (best).
+
+- **Corporate proxy / TLS inspection?** If the Hugging Face download fails with
+  an SSL `CERTIFICATE_VERIFY_FAILED` (CA-not-marked-critical) error, the engine
+  auto-routes TLS through the OS trust store via **`truststore`** (in `[models]`).
+- **CLAP** (`--model clap`) adds define-a-genre-**by-name** (joint audio+text);
+  its default checkpoint is ~2 GB and it pins older deps (install in a separate
+  env if it conflicts).
+- **Discogs-EffNet** (`--model discogs`, native electronic styles) runs via
+  **Essentia** — solid on Linux/macOS, flaky on Windows; use WSL2 there, or stick
+  with MERT/CLAP which install cleanly on Windows.
+
+Verify the model path on your machine:
+
+```bash
+MGC_TEST_MODELS=1 pytest engine/tests/test_models_integration.py -v   # downloads + runs MERT
+```
 
 ## Quickstart — cold start on your library
 
@@ -95,10 +115,10 @@ edit the JSON) to relocate instead of copy.
 
 | Model | Install | Best for | Notes |
 |-------|---------|----------|-------|
-| `baseline` | none | smoke-testing the pipeline | pure-numpy spectral features; rough, not for real subgenre accuracy |
-| `discogs` | `[models]` + Essentia | **electronic subgenres** | Discogs-EffNet + `genre_discogs400`; zero-shot labels out of the box |
-| `mert` | `[models]` | strong general music embeddings | great for clustering / sound-alike |
-| `clap` | `[models]` | define a genre **by name/description** | joint audio+text space (zero-shot by text) |
+| `mert` ⭐ | `[models]` | **fine subgenres + sound-alike** (recommended) | self-supervised *music* model; Windows-friendly, GPU, **verified end-to-end**; auto-uses 768/1024-d |
+| `baseline` | none | smoke-testing / zero-install | pure-numpy spectral features; rough, not for real subgenre accuracy |
+| `discogs` | `[models]` + Essentia | native **electronic styles** | Discogs-EffNet + `genre_discogs400` zero-shot labels; Essentia flaky on Windows (use WSL2) |
+| `clap` | `[models]` | define a genre **by name/description** | joint audio+text space (zero-shot by text); ~2 GB ckpt |
 
 Pick one **active** model at a time (`--model`); embeddings are cached per model.
 The validation step (below) is how you decide which wins on *your* library.
