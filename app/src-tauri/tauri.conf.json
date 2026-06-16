@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "MGC",
+  "productName": "Musik",
   "version": "0.1.0",
   "identifier": "com.ailabs.mgc",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MGC — Music Genre Classifier",
+        "title": "Musik — Music Hub",
         "width": 1280,
         "height": 820,
         "minWidth": 940,

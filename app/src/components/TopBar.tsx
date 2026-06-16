@@ -120,8 +120,8 @@ export function TopBar({
     <header className="topbar">
       <div className="topbar__row">
         <div className="brand">
-          <span className="brand__logo">MGC</span>
-          <span className="brand__sub">music genre classifier</span>
+          <span className="brand__logo">Musik</span>
+          <span className="brand__sub">music hub</span>
         </div>
 
         <div className={healthClass(offline)}>
