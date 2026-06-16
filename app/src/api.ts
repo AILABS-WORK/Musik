@@ -27,6 +27,10 @@ export const api = {
   importPaths: (paths: string[], embed = true) =>
     req<{ added: number; files_seen: number; total: number; embedding: boolean }>(
       "POST", "/api/import", { paths, embed }),
+  /** Browser drag-drop upload: base64 file bytes saved server-side + imported. */
+  upload: (files: { name: string; data_base64: string }[]) =>
+    req<{ added: number; files_seen: number; total: number; embedding: boolean }>(
+      "POST", "/api/upload", { files }),
   progress: () => req<Progress>("GET", "/api/progress"),
 
   tracks: () => req<Track[]>("GET", "/api/tracks"),

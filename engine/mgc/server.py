@@ -65,6 +65,11 @@ class ImportIn(BaseModel):
     embed: bool = True        # auto-embed the newly added tracks in the background
 
 
+class UploadIn(BaseModel):
+    # browser drag-drop: each file is {name, data_base64} (data URL prefix tolerated)
+    files: list[dict]
+
+
 class SetBuildIn(BaseModel):
     description: str
     length: Optional[int] = None
@@ -244,6 +249,35 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         embedding = start_embedding(force=False) if (body.embed and files) else False
         return {"added": added, "files_seen": len(files),
                 "total": eng().store.count_tracks(), "embedding": embedding}
+
+    @app.post("/api/upload")
+    def upload(body: UploadIn):
+        """Browser drag-drop: receive base64 file bytes, save them under
+        <library>/_dropped, then register + embed them (reuses /api/import)."""
+        import base64
+        import os
+
+        root = app.state.config.library_root or os.getcwd()
+        drop = os.path.join(root, "_dropped")
+        os.makedirs(drop, exist_ok=True)
+        saved: list[str] = []
+        for f in body.files:
+            name = os.path.basename(str(f.get("name", "")).strip()) or "track"
+            b64 = f.get("data_base64") or ""
+            try:
+                raw = base64.b64decode(b64.split(",")[-1])  # tolerate a data: URL prefix
+            except Exception:
+                continue
+            dest = os.path.join(drop, name)
+            try:
+                with open(dest, "wb") as fh:
+                    fh.write(raw)
+                saved.append(dest)
+            except Exception:
+                continue
+        if not saved:
+            return {"added": 0, "files_seen": 0, "total": eng().store.count_tracks(), "embedding": False}
+        return import_paths(ImportIn(paths=saved, embed=True))
 
     @app.get("/api/progress")
     def progress():
