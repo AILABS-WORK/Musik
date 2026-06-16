@@ -145,50 +145,65 @@ export function TopBar({
 
         <div className="spacer" />
 
-        <button
-          className="btn btn--accent"
-          onClick={onScan}
-          disabled={busy || embedRunning}
-        >
-          Scan
-        </button>
-        <button
-          className="btn btn--accent"
-          onClick={onEmbed}
-          disabled={busy || embedRunning}
-        >
-          Embed
-        </button>
-        <button
-          className="btn btn--accent"
-          onClick={onAnalyze}
-          disabled={busy || embedRunning}
-        >
-          Analyze
-        </button>
-        <button
-          className="btn btn--accent"
-          onClick={onTag}
-          disabled={busy || embedRunning}
-          title="Compute AudioSet-527 sound tags in the background"
-        >
-          Tag
-        </button>
-        <button
-          className="btn btn--accent"
-          onClick={onSuggest}
-          disabled={busy || embedRunning}
-        >
-          Suggest
-        </button>
-        <button
-          className="btn btn--go"
-          onClick={onAuto}
-          disabled={busy || embedRunning}
-          title="Embed → Analyze → Suggest, all in one"
-        >
-          Auto-sort
-        </button>
+        <div className="btn-group" role="group" aria-label="Library">
+          <span className="btn-group__label">Library</span>
+          <button
+            className="btn btn--accent"
+            onClick={onScan}
+            disabled={busy || embedRunning}
+            title="Scan the library folder for audio files"
+          >
+            Scan
+          </button>
+          <button
+            className="btn btn--accent"
+            onClick={onEmbed}
+            disabled={busy || embedRunning}
+            title="Compute sound embeddings for new tracks"
+          >
+            Embed
+          </button>
+        </div>
+
+        <div className="btn-group" role="group" aria-label="Analyze">
+          <span className="btn-group__label">Analyze</span>
+          <button
+            className="btn btn--accent"
+            onClick={onAnalyze}
+            disabled={busy || embedRunning}
+            title="Detect BPM, musical key and energy"
+          >
+            Analyze
+          </button>
+          <button
+            className="btn btn--accent"
+            onClick={onTag}
+            disabled={busy || embedRunning}
+            title="Compute AudioSet-527 sound tags in the background"
+          >
+            Tag
+          </button>
+        </div>
+
+        <div className="btn-group" role="group" aria-label="Classify">
+          <span className="btn-group__label">Classify</span>
+          <button
+            className="btn btn--accent"
+            onClick={onSuggest}
+            disabled={busy || embedRunning}
+            title="Suggest genres for unclassified tracks"
+          >
+            Suggest
+          </button>
+          <button
+            className="btn btn--go"
+            onClick={onAuto}
+            disabled={busy || embedRunning}
+            title="Embed → Analyze → Suggest, all in one"
+          >
+            Auto-sort
+          </button>
+        </div>
       </div>
 
       <div className="topbar__row">

@@ -25,6 +25,8 @@ interface VocalInfo {
 interface MoodInfo {
   arousal?: number | null;
   valence?: number | null;
+  /** Human-readable named moods, e.g. ["driving","hypnotic","dark"]. */
+  tags?: string[] | null;
 }
 
 interface Understanding {
@@ -202,6 +204,11 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
   const arousal = num(u?.mood?.arousal);
   const hasMood = valence !== null && arousal !== null;
 
+  // Named, human-readable moods (e.g. "driving", "hypnotic", "dark").
+  const moodTags = (u?.mood?.tags ?? []).filter(
+    (t): t is string => typeof t === "string" && t.length > 0,
+  );
+
   const tags = (u?.tags_canonical ?? []).filter((t) => t.length > 0);
 
   return (
@@ -257,6 +264,15 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
 
       <div className="song-block">
         <h3 className="song-block__title">Mood</h3>
+        {moodTags.length > 0 && (
+          <div className="song-chips song-moodtags">
+            {moodTags.map((t) => (
+              <span className="song-chip song-chip--mood" key={t}>
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
         {hasMood ? (
           <div className="song-mood">
             <MoodPad valence={valence} arousal={arousal} />
@@ -265,9 +281,9 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
               <div>aro {arousal.toFixed(2)}</div>
             </div>
           </div>
-        ) : (
+        ) : moodTags.length === 0 ? (
           <div className="dash">—</div>
-        )}
+        ) : null}
       </div>
 
       <div className="song-block">

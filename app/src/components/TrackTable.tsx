@@ -93,12 +93,22 @@ export function TrackTable({
           <thead>
             <tr>
               <th className="col-check">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  onChange={(e) => onToggleAll(visibleIds, e.target.checked)}
-                  aria-label="Select all visible"
-                />
+                <label className="cbx" title="Select all visible">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          !allChecked &&
+                          visibleIds.some((id) => checked.has(id));
+                      }
+                    }}
+                    onChange={(e) => onToggleAll(visibleIds, e.target.checked)}
+                    aria-label="Select all visible"
+                  />
+                  <span className="cbx__box" aria-hidden="true" />
+                </label>
               </th>
               <th className="col-name">Name</th>
               <th className="col-bpm">BPM</th>
@@ -114,22 +124,32 @@ export function TrackTable({
           <tbody>
             {visible.map((t) => {
               const isSel = t.id === selectedId;
+              const isChecked = checked.has(t.id);
+              const rowClass = [
+                isSel ? "selected" : "",
+                isChecked ? "is-checked" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
               return (
                 <tr
                   key={t.id}
-                  className={isSel ? "selected" : undefined}
+                  className={rowClass || undefined}
                   onClick={() => onSelect(t.id)}
                 >
                   <td
                     className="col-check"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked.has(t.id)}
-                      onChange={() => onToggleCheck(t.id)}
-                      aria-label={`Select ${t.name}`}
-                    />
+                    <label className="cbx" title={`Select ${t.name}`}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => onToggleCheck(t.id)}
+                        aria-label={`Select ${t.name}`}
+                      />
+                      <span className="cbx__box" aria-hidden="true" />
+                    </label>
                   </td>
                   <td className="col-name">
                     <div className="cell-name" title={t.path}>

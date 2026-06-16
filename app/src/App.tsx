@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { DragEvent } from "react";
 import type { Genre, Progress, SimilarItem, Track } from "./types";
 import { api } from "./api";
 import { TopBar } from "./components/TopBar";
@@ -12,11 +13,13 @@ import { SongPanel } from "./components/SongPanel";
 import { ClustersPanel } from "./components/ClustersPanel";
 import { ApplyPanel } from "./components/ApplyPanel";
 import { StatusBar } from "./components/StatusBar";
-import { ImportBar } from "./components/ImportBar";
+import { AddMusic } from "./components/AddMusic";
 import { SearchBar } from "./components/SearchBar";
 import { SetBuilder } from "./components/SetBuilder";
 import { IdentifyPanel } from "./components/IdentifyPanel";
 import { MixPanel } from "./components/MixPanel";
+import { SelectionBar } from "./components/SelectionBar";
+import { EmptyState } from "./components/EmptyState";
 
 type MainView = "table" | "map";
 
@@ -66,6 +69,13 @@ export default function App() {
   const autoRunningRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // ---- browser drag-drop loading ----
+  const [dragActive, setDragActive] = useState(false);
+  // depth counter so nested dragenter/leave events don't flicker the overlay
+  const dragDepthRef = useRef(0);
+  // hidden <input type=file> shared by EmptyState's "Browse" CTA
+  const heroFileRef = useRef<HTMLInputElement | null>(null);
 
   const report = useCallback((msg: string, isError = false) => {
     setStatus(msg);
@@ -184,6 +194,124 @@ export default function App() {
       }
     },
     [report, startEmbedPoll, refreshAll],
+  );
+
+  // ---- browser drag-drop / Browse upload ----
+  const handleUploadFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setBusy(true);
+      report(`reading ${files.length} file(s)…`);
+      try {
+        // Read every File as a base64 data URL. api.upload tolerates the
+        // "data:…;base64," prefix, so we send the readAsDataURL output as-is.
+        const payload = await Promise.all(
+          files.map(
+            (f) =>
+              new Promise<{ name: string; data_base64: string }>(
+                (resolve, reject) => {
+                  const fr = new FileReader();
+                  fr.onload = () =>
+                    resolve({ name: f.name, data_base64: String(fr.result) });
+                  fr.onerror = () =>
+                    reject(fr.error ?? new Error(`read failed: ${f.name}`));
+                  fr.readAsDataURL(f);
+                },
+              ),
+          ),
+        );
+        report(`uploading ${payload.length} file(s)…`);
+        const r = await api.upload(payload);
+        report(`added ${r.added} new track(s) from ${r.files_seen} file(s)`);
+        if (r.embedding) {
+          setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+          startEmbedPoll();
+        } else {
+          await refreshAll();
+        }
+      } catch (e) {
+        report(`upload failed: ${errMsg(e)}`, true);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [report, startEmbedPoll, refreshAll],
+  );
+
+  // Trigger the hidden hero file input (used by the empty-state CTA).
+  const openHeroPicker = useCallback(() => {
+    heroFileRef.current?.click();
+  }, []);
+
+  // ---- native OS drag-drop under Tauri (real absolute paths) ----
+  // Browsers can't expose absolute paths, so this only runs in the desktop
+  // shell; the browser File overlay above covers the web/dev case.
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const un = await getCurrentWebview().onDragDropEvent((event) => {
+          const payload = event.payload as { type: string; paths?: string[] };
+          if (payload.type === "enter" || payload.type === "over") {
+            setDragActive(true);
+          } else if (payload.type === "leave") {
+            setDragActive(false);
+          } else if (payload.type === "drop") {
+            setDragActive(false);
+            const paths = payload.paths ?? [];
+            if (paths.length) void handleImport(paths);
+          }
+        });
+        if (active) unlisten = un;
+        else un();
+      } catch {
+        /* not under Tauri — browser overlay handles it */
+      }
+    })();
+    return () => {
+      active = false;
+      if (unlisten) unlisten();
+    };
+  }, [handleImport]);
+
+  // ---- full-window drag overlay ----
+  // Only react to drags that carry files (not text / in-app element drags).
+  const dragHasFiles = (e: DragEvent): boolean =>
+    Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
+  const onDragEnter = useCallback((e: DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }, []);
+
+  const onDragOver = useCallback((e: DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const onDragLeave = useCallback((e: DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }, []);
+
+  const onDrop = useCallback(
+    (e: DragEvent) => {
+      dragDepthRef.current = 0;
+      setDragActive(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) return; // Tauri native-path drops are handled elsewhere
+      e.preventDefault();
+      void handleUploadFiles(files);
+    },
+    [handleUploadFiles],
   );
 
   const handleSuggest = useCallback(async () => {
@@ -330,6 +458,19 @@ export default function App() {
     });
   }, []);
 
+  // ---- selection action bar → existing tabs (selection stays intact) ----
+  const handleBuildFromSelection = useCallback(() => {
+    setTab("set");
+    report(`${checked.size} track(s) ready — describe the set you want`);
+  }, [checked.size, report]);
+
+  const handleUseAsExamples = useCallback(() => {
+    setTab("genres");
+    report(`${checked.size} track(s) ready — name a genre to create by example`);
+  }, [checked.size, report]);
+
+  const clearChecked = useCallback(() => setChecked(new Set()), []);
+
   const selectTrack = useCallback(
     async (id: number) => {
       setSelectedId(id);
@@ -457,8 +598,16 @@ export default function App() {
           .map((r) => tracks.find((t) => t.id === r.track_id))
           .filter((t): t is Track => t !== undefined);
 
+  const libraryEmpty = tracks.length === 0 && searchResults === null;
+
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <TopBar
         busy={busy}
         progress={progress}
@@ -473,65 +622,82 @@ export default function App() {
 
       <div className="app__body">
         <main className="app__main">
-          <SearchBar
-            onSearch={(q, t) => void handleSearch(q, t)}
-            onClear={handleClearSearch}
-            meta={searchMeta}
-            active={searchResults !== null}
-            count={displayedTracks.length}
-          />
-          <ImportBar onImport={(p) => void handleImport(p)} report={report} />
-          <div className="viewtoggle">
-            <div className="seg">
-              <button
-                className={view === "table" ? "seg__btn active" : "seg__btn"}
-                onClick={() => setView("table")}
-              >
-                Table
-              </button>
-              <button
-                className={view === "map" ? "seg__btn active" : "seg__btn"}
-                onClick={() => setView("map")}
-              >
-                Map
-              </button>
+          {libraryEmpty ? (
+            <div className="app__main-scroll">
+              <AddMusic
+                onImport={(p) => void handleImport(p)}
+                onUploadFiles={(f) => void handleUploadFiles(f)}
+                report={report}
+              />
+              <EmptyState onBrowse={openHeroPicker} />
             </div>
-          </div>
-          {view === "table" ? (
+          ) : (
             <>
-              {searchResults !== null && (
-                <div className="search-banner">
-                  showing{" "}
-                  <strong>{displayedTracks.length}</strong> result
-                  {displayedTracks.length === 1 ? "" : "s"} for your search
+              <SearchBar
+                onSearch={(q, t) => void handleSearch(q, t)}
+                onClear={handleClearSearch}
+                meta={searchMeta}
+                active={searchResults !== null}
+                count={displayedTracks.length}
+              />
+              <AddMusic
+                onImport={(p) => void handleImport(p)}
+                onUploadFiles={(f) => void handleUploadFiles(f)}
+                report={report}
+              />
+              <div className="viewtoggle">
+                <div className="seg">
                   <button
-                    className="btn btn--xs search-banner__clear"
-                    onClick={handleClearSearch}
+                    className={view === "table" ? "seg__btn active" : "seg__btn"}
+                    onClick={() => setView("table")}
                   >
-                    Clear
+                    Table
+                  </button>
+                  <button
+                    className={view === "map" ? "seg__btn active" : "seg__btn"}
+                    onClick={() => setView("map")}
+                  >
+                    Map
                   </button>
                 </div>
+              </div>
+              {view === "table" ? (
+                <>
+                  {searchResults !== null && (
+                    <div className="search-banner">
+                      showing{" "}
+                      <strong>{displayedTracks.length}</strong> result
+                      {displayedTracks.length === 1 ? "" : "s"} for your search
+                      <button
+                        className="btn btn--xs search-banner__clear"
+                        onClick={handleClearSearch}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  <TrackTable
+                    tracks={displayedTracks}
+                    genres={genres}
+                    checked={checked}
+                    selectedId={selectedId}
+                    onToggleCheck={toggleCheck}
+                    onToggleAll={toggleAll}
+                    onSelect={selectTrack}
+                    onPlay={play}
+                    onConfirm={(trackId, genreId) => {
+                      void confirmGenre(trackId, genreId);
+                    }}
+                  />
+                </>
+              ) : (
+                <MapView
+                  tracks={tracks}
+                  selectedId={selectedId}
+                  onSelect={selectTrack}
+                />
               )}
-              <TrackTable
-                tracks={displayedTracks}
-                genres={genres}
-                checked={checked}
-                selectedId={selectedId}
-                onToggleCheck={toggleCheck}
-                onToggleAll={toggleAll}
-                onSelect={selectTrack}
-                onPlay={play}
-                onConfirm={(trackId, genreId) => {
-                  void confirmGenre(trackId, genreId);
-                }}
-              />
             </>
-          ) : (
-            <MapView
-              tracks={tracks}
-              selectedId={selectedId}
-              onSelect={selectTrack}
-            />
           )}
         </main>
 
@@ -581,10 +747,44 @@ export default function App() {
         </SidePanel>
       </div>
 
+      <SelectionBar
+        count={checked.size}
+        onBuildSet={handleBuildFromSelection}
+        onUseAsExamples={handleUseAsExamples}
+        onClear={clearChecked}
+      />
+
       <StatusBar
         message={status}
         isError={statusError}
         busy={busy || embedRunning}
+      />
+
+      {/* full-window drag-and-drop overlay (browser File drops) */}
+      {dragActive && (
+        <div className="dropzone" aria-hidden="true">
+          <div className="dropzone__card">
+            <div className="dropzone__glyph">⤓</div>
+            <div className="dropzone__title">Drop your music to add it</div>
+            <div className="dropzone__sub">
+              wav · mp3 · flac · aiff · m4a · ogg
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* hidden file input shared by the empty-state "Browse" CTA */}
+      <input
+        ref={heroFileRef}
+        type="file"
+        multiple
+        accept="audio/*,.flac,.wav,.mp3,.aiff,.m4a,.ogg"
+        hidden
+        onChange={(e) => {
+          const list = e.target.files;
+          if (list && list.length > 0) void handleUploadFiles(Array.from(list));
+          e.target.value = "";
+        }}
       />
 
       {/* subtle "up next" indicator while a queue is active */}
