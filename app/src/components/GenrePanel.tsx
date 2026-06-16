@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Genre } from "../types";
+import { api } from "../api";
 
 interface GenrePanelProps {
   genres: Genre[];
@@ -50,6 +51,26 @@ export function GenrePanel({ genres, checkedIds, onByExample }: GenrePanelProps)
   const [level, setLevel] = useState("subgenre");
   const [submitting, setSubmitting] = useState(false);
 
+  // genre-graph explorer (MusicBrainz subgenre/fusion graph)
+  const [graphQuery, setGraphQuery] = useState("");
+  const [related, setRelated] = useState<{ genre: string; weight: number }[] | null>(null);
+  const [exploring, setExploring] = useState(false);
+
+  const explore = async (g: string) => {
+    const q = g.trim();
+    if (!q) return;
+    setGraphQuery(q);
+    setExploring(true);
+    try {
+      const r = await api.relatedGenres(q);
+      setRelated(r.related);
+    } catch {
+      setRelated([]);
+    } finally {
+      setExploring(false);
+    }
+  };
+
   const rows = useMemo(() => flatten(buildTree(genres), 0), [genres]);
 
   const canCreate = name.trim().length > 0 && checkedIds.length > 0 && !submitting;
@@ -98,6 +119,48 @@ export function GenrePanel({ genres, checkedIds, onByExample }: GenrePanelProps)
                 </span>
                 <span className="genre-node__level">{node.level}</span>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="panel-section">
+        <h3>Explore the genre graph</h3>
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="a genre, e.g. house"
+            value={graphQuery}
+            onChange={(e) => setGraphQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void explore(graphQuery);
+            }}
+          />
+        </div>
+        <div className="genre-seeds">
+          {["house", "techno", "trance", "dubstep", "drum and bass"].map((s) => (
+            <button key={s} className="chip chip--ghost" onClick={() => void explore(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+        {exploring ? (
+          <div className="hint">…</div>
+        ) : related === null ? (
+          <div className="hint">Type a genre to see its subgenres and related styles.</div>
+        ) : related.length === 0 ? (
+          <div className="hint">No related genres for “{graphQuery}”. Try a parent genre.</div>
+        ) : (
+          <div className="genre-rel">
+            {related.map((r) => (
+              <button
+                key={r.genre}
+                className="chip chip--rel"
+                onClick={() => void explore(r.genre)}
+                title={`relatedness ${r.weight} — click to explore`}
+              >
+                {r.genre}
+              </button>
             ))}
           </div>
         )}
