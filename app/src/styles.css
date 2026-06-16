@@ -2267,6 +2267,58 @@ table.tracks tbody tr.selected.is-checked {
   border: 1px solid rgba(74, 222, 128, 0.28);
 }
 
+/* ---- genre blend chips (primary + clickable alternatives) ---- */
+.song-genre {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-family: inherit;
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: background 0.16s var(--ease), border-color 0.16s var(--ease),
+    box-shadow 0.16s var(--ease), color 0.16s var(--ease);
+}
+
+/* primary = the stored/rank-0 genre, accent-highlighted, not clickable */
+.song-genre--primary {
+  color: var(--accent);
+  background: rgba(45, 212, 191, 0.14);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.12);
+  cursor: default;
+}
+
+/* alternatives = muted, subtle border, clickable to relabel */
+.song-genre--alt {
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  cursor: pointer;
+}
+
+.song-genre--alt:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.song-genre--alt:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.song-genre__score {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.song-genre--primary .song-genre__score {
+  color: var(--accent);
+}
+
 /* named, human-readable moods — the headline mood chips */
 .song-moodtags {
   margin-bottom: 4px;

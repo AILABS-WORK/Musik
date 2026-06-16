@@ -7,6 +7,8 @@ import "./wave.css";
 interface WavePanelProps {
   track: Track | null;
   report: (m: string, e?: boolean) => void;
+  /** Called after a subgenre is created so the parent can refresh. */
+  onChanged?: () => void;
 }
 
 /** One result row from segment search. */
@@ -81,7 +83,7 @@ function computePeaks(samples: Float32Array, bars: number): Float32Array {
   return peaks;
 }
 
-export function WavePanel({ track, report }: WavePanelProps) {
+export function WavePanel({ track, report, onChanged }: WavePanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Decoded peak magnitudes for the current track (null while loading/unloaded).
   const peaksRef = useRef<Float32Array | null>(null);
@@ -102,6 +104,7 @@ export function WavePanel({ track, report }: WavePanelProps) {
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [indexing, setIndexing] = useState(false);
+  const [makingGenre, setMakingGenre] = useState(false);
 
   // Private audio elements: one for previewing the selection, one for results.
   const selAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -440,6 +443,33 @@ export function WavePanel({ track, report }: WavePanelProps) {
     }
   }, [region, track, report]);
 
+  // ---- define a subgenre from this sound ----
+  const makeGenre = useCallback(async () => {
+    if (!region || !track) return;
+    const name = label.trim();
+    if (!name) return;
+    setMakingGenre(true);
+    report(`creating subgenre “${name}”…`);
+    try {
+      const r = await api.segmentMakeGenre({
+        track_id: track.id,
+        start: region.start,
+        end: region.end,
+        name,
+      });
+      if (r.ok) {
+        report(`created subgenre “${name}” from ${r.examples?.length ?? 0} track(s)`);
+        onChanged?.();
+      } else {
+        report("make subgenre failed", true);
+      }
+    } catch (e) {
+      report(`make subgenre failed: ${e instanceof Error ? e.message : String(e)}`, true);
+    } finally {
+      setMakingGenre(false);
+    }
+  }, [region, track, label, report, onChanged]);
+
   // ---- build the per-window index, polling progress until done ----
   const indexParts = useCallback(async () => {
     setIndexing(true);
@@ -570,6 +600,14 @@ export function WavePanel({ track, report }: WavePanelProps) {
             disabled={!hasRegion || searching}
           >
             {searching ? "Finding…" : "Find this part elsewhere"}
+          </button>
+          <button
+            className="btn btn--accent btn--sm"
+            onClick={() => void makeGenre()}
+            disabled={!hasRegion || !label.trim() || makingGenre}
+            title="Create a subgenre seeded from every track that has this sound"
+          >
+            {makingGenre ? "Creating…" : "Make subgenre from this"}
           </button>
         </div>
       </div>

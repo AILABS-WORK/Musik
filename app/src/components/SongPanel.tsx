@@ -6,6 +6,18 @@ import { Meter } from "./Meter";
 interface SongPanelProps {
   track: Track | null;
   onPlay: (id: number) => void;
+  /** Called after a relabel so the parent (e.g. the track table) can refresh. */
+  onChanged?: () => void;
+  /** Surface a status message (errors when isError=true). */
+  report?: (m: string, e?: boolean) => void;
+}
+
+/** One genre suggestion from the blend (multi-label, rank 0 = primary/stored). */
+interface Suggestion {
+  genre_id: number;
+  name: string;
+  confidence: number;
+  rank: number;
 }
 
 /**
@@ -93,10 +105,14 @@ function MoodPad({ valence, arousal }: { valence: number; arousal: number }) {
   );
 }
 
-export function SongPanel({ track, onPlay }: SongPanelProps) {
+export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) {
   const [u, setU] = useState<Understanding | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // ---- genre blend (multi-label suggestions, best first) ----
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [relabeling, setRelabeling] = useState<number | null>(null);
 
   useEffect(() => {
     if (track === null) {
@@ -125,6 +141,49 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
       alive = false;
     };
   }, [track]);
+
+  // Fetch the genre blend whenever the selected track changes.
+  useEffect(() => {
+    if (track === null) {
+      setSuggestions([]);
+      return;
+    }
+    let alive = true;
+    const id = track.id;
+    void (async () => {
+      try {
+        const res = await api.trackSuggestions(id);
+        if (alive) setSuggestions(res.suggestions);
+      } catch {
+        // A missing blend isn't an error worth surfacing — show the hint instead.
+        if (alive) setSuggestions([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [track]);
+
+  // Relabel: confirm a non-primary genre, then re-fetch the blend and notify.
+  const relabel = async (genreId: number, name: string) => {
+    if (track === null) return;
+    const id = track.id;
+    setRelabeling(genreId);
+    try {
+      await api.confirm({ track_id: id, genre_id: genreId });
+      const res = await api.trackSuggestions(id);
+      setSuggestions(res.suggestions);
+      onChanged?.();
+      report?.(`relabeled to ${name}`);
+    } catch (e) {
+      report?.(
+        `relabel failed: ${e instanceof Error ? e.message : String(e)}`,
+        true,
+      );
+    } finally {
+      setRelabeling(null);
+    }
+  };
 
   if (track === null) {
     return <div className="hint">Select a track to see its sound profile.</div>;
@@ -158,10 +217,52 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
     </div>
   );
 
+  // ---- genre blend: primary chip (rank 0) + clickable alternatives ----
+  // Shown near the top so it's always available, regardless of tag state.
+  const genres = (
+    <div className="song-block">
+      <h3 className="song-block__title">Genres</h3>
+      {suggestions.length > 0 ? (
+        <div className="song-chips">
+          {suggestions.map((s) => {
+            const primary = s.rank === 0;
+            const score = `${Math.round(
+              Math.max(0, Math.min(1, s.confidence)) * 100,
+            )}%`;
+            return (
+              <button
+                key={s.genre_id}
+                type="button"
+                className={
+                  primary
+                    ? "song-genre song-genre--primary"
+                    : "song-genre song-genre--alt"
+                }
+                disabled={primary || relabeling !== null}
+                onClick={primary ? undefined : () => void relabel(s.genre_id, s.name)}
+                title={
+                  primary
+                    ? `${s.name} — current genre`
+                    : `Relabel to “${s.name}”`
+                }
+              >
+                <span className="song-genre__name">{s.name}</span>
+                <span className="song-genre__score mono">{score}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="hint">Run Suggest to get genre suggestions.</div>
+      )}
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="song-card">
         {header}
+        {genres}
         {tiles}
         <div className="hint">Loading…</div>
       </div>
@@ -177,6 +278,7 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
     return (
       <div className="song-card">
         {header}
+        {genres}
         {tiles}
         {err !== null ? (
           <div className="hint">Could not load sound profile: {err}</div>
@@ -219,6 +321,8 @@ export function SongPanel({ track, onPlay }: SongPanelProps) {
       {caption !== null && caption.length > 0 && (
         <blockquote className="song-caption">{caption}</blockquote>
       )}
+
+      {genres}
 
       {tiles}
 

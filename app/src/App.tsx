@@ -850,12 +850,14 @@ export default function App() {
             <SongPanel
               track={tracks.find((t) => t.id === selectedId) ?? null}
               onPlay={play}
+              onChanged={refreshAll}
             />
           )}
           {tab === "parts" && (
             <WavePanel
               track={tracks.find((t) => t.id === selectedId) ?? null}
               report={report}
+              onChanged={refreshAll}
             />
           )}
           {tab === "clusters" && (
