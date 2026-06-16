@@ -2396,3 +2396,17 @@ table.tracks tbody tr.selected.is-checked {
 .mixlist__time { font-family: var(--mono); font-size: 11px; color: var(--text-dim); min-width: 78px; }
 .mixlist__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .mixlist__score { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
+
+/* ===== explainable similarity (why a track matches) ===== */
+.sim-rowwrap { display: flex; flex-direction: column; }
+.sim-why { background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 10px; padding: 1px 6px; border-radius: 999px; cursor: pointer; flex: none; }
+.sim-why:hover { color: var(--accent); border-color: var(--accent); }
+.sim-whybox { font-size: 11.5px; line-height: 1.5; color: var(--text-dim);
+  margin: 2px 0 6px 28px; padding: 6px 8px; background: var(--panel-2, #1b1f27);
+  border: 1px solid var(--border); border-radius: 6px; }
+.sim-shares, .sim-diffs { margin: 1px 0; }
+.sim-tag { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 0 5px; border-radius: 999px; font-weight: 600; }
+.sim-tag--yes { color: var(--accent-2, #4ade80); border: 1px solid var(--accent-2, #4ade80); }
+.sim-tag--no { color: var(--amber, #f59e0b); border: 1px solid var(--amber, #f59e0b); }
