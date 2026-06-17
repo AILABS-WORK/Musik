@@ -2419,3 +2419,9 @@ table.tracks tbody tr.selected.is-checked {
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 .chip--ghost { color: var(--text-dim); font-size: 11px; }
 .chip--rel { background: rgba(45,212,191,0.08); border-color: rgba(45,212,191,0.35); color: var(--accent); }
+
+/* ===== cluster group-count control ===== */
+.cluster-groups { display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  color: var(--text-dim); margin-left: auto; margin-right: 8px; }
+.cluster-groups input { width: 48px; padding: 2px 4px; font-size: 12px; font-family: var(--mono);
+  background: var(--panel-2, #1b1f27); border: 1px solid var(--border); border-radius: 4px; color: var(--text); }

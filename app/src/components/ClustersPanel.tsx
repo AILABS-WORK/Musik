@@ -60,6 +60,8 @@ export function ClustersPanel({
 }: ClustersPanelProps) {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [finding, setFinding] = useState(false);
+  // target number of groups (KMeans); helps a homogeneous library split sensibly
+  const [nGroups, setNGroups] = useState(12);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   // Per-cluster local form state keyed by cluster id.
   const [names, setNames] = useState<Record<number, string>>({});
@@ -75,7 +77,7 @@ export function ClustersPanel({
     setFinding(true);
     report("finding clusters…");
     try {
-      const raw = await api.cluster(2);
+      const raw = await api.cluster(2, nGroups > 1 ? nGroups : undefined);
       const list = Array.isArray(raw) ? raw : [];
       const parsed: Cluster[] = [];
       list.forEach((c, i) => {
@@ -89,7 +91,7 @@ export function ClustersPanel({
     } finally {
       setFinding(false);
     }
-  }, [report]);
+  }, [report, nGroups]);
 
   const makeGenre = useCallback(
     async (cluster: Cluster) => {
@@ -156,6 +158,16 @@ export function ClustersPanel({
       <div className="panel-section">
         <div className="apply-group__head">
           <span className="apply-group__title">Clusters</span>
+          <label className="cluster-groups" title="How many groups to split the library into">
+            groups
+            <input
+              type="number"
+              min={2}
+              max={60}
+              value={nGroups}
+              onChange={(e) => setNGroups(Math.max(2, Number(e.target.value) || 12))}
+            />
+          </label>
           <button
             className="btn btn--accent btn--xs"
             onClick={() => void find()}
