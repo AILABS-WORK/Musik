@@ -420,9 +420,9 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             return res
 
     @app.post("/api/cluster")
-    def cluster(min_size: int = 2):
+    def cluster(min_size: int = 2, n_clusters: Optional[int] = None):
         with app.state.lock:
-            cl = eng().cluster(min_cluster_size=min_size)
+            cl = eng().cluster(min_cluster_size=min_size, n_clusters=n_clusters)
             return [{"cluster_id": c.cluster_id, "size": len(c.member_track_ids),
                      "members": c.member_track_ids, "suggested_genre_id": c.suggested_genre_id}
                     for c in cl]

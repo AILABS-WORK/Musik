@@ -134,9 +134,10 @@ class Engine:
         return self.store.get_suggestions(track_id)
 
     # ---- clustering + similarity -------------------------------------------
-    def cluster(self, min_cluster_size: int = 2):
+    def cluster(self, min_cluster_size: int = 2, n_clusters: Optional[int] = None):
         from mgc.cluster.cluster import cluster_tracks
-        return cluster_tracks(self.store, self.classify_model, min_cluster_size=min_cluster_size)
+        return cluster_tracks(self.store, self.classify_model,
+                              min_cluster_size=min_cluster_size, n_clusters=n_clusters)
 
     def similar(self, track_id: int, n: int = 10):
         from mgc.similarity.similar import similar_tracks

@@ -54,7 +54,8 @@ export const api = {
   explain: (a: number, b: number) =>
     req<{ score: number | null; a: string; b: string; shared: string[]; different: string[] }>(
       "GET", `/api/explain?a=${a}&b=${b}`),
-  cluster: (minSize = 2) => req<any[]>("POST", `/api/cluster?min_size=${minSize}`),
+  cluster: (minSize = 2, nClusters?: number) =>
+    req<any[]>("POST", `/api/cluster?min_size=${minSize}${nClusters ? `&n_clusters=${nClusters}` : ""}`),
   project: (method = "pca") => req<{ points: any[] }>("GET", `/api/project?method=${method}`),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),

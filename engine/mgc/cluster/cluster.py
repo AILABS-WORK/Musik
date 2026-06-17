@@ -50,22 +50,54 @@ def _kmeans_labels(matrix: np.ndarray, min_cluster_size: int) -> np.ndarray:
     return best_labels
 
 
-def _label_points(matrix: np.ndarray, min_cluster_size: int, method: str) -> np.ndarray:
-    """Return a per-row cluster label array using HDBSCAN or KMeans."""
+def _reduce(matrix: np.ndarray) -> np.ndarray:
+    """PCA-reduce high-dim embeddings before clustering, then re-normalize.
+
+    Music embeddings are 768-1300d; density clustering drowns in that many
+    dimensions (everything reads as noise) and a homogeneous library collapses to
+    one blob. Projecting to ~40d recovers the subgroup structure.
+    """
+    n, d = matrix.shape
+    target = min(40, max(2, n - 1), d)
+    if d <= target:
+        z = matrix
+    else:
+        try:
+            from sklearn.decomposition import PCA
+            z = PCA(n_components=target, random_state=0).fit_transform(matrix)
+        except Exception:
+            z = matrix
+    norms = np.linalg.norm(z, axis=1, keepdims=True)
+    return (z / np.where(norms == 0, 1.0, norms)).astype(np.float32)
+
+
+def _label_points(matrix: np.ndarray, min_cluster_size: int, method: str,
+                  n_clusters: Optional[int] = None) -> np.ndarray:
+    """Per-row cluster labels. PCA-reduces first; uses KMeans(n_clusters) when a
+    target group count is given, else HDBSCAN with a KMeans (silhouette) fallback."""
+    z = _reduce(np.asarray(matrix, dtype=np.float32))
+
+    if n_clusters and n_clusters >= 2:
+        from sklearn.cluster import KMeans
+
+        k = min(int(n_clusters), z.shape[0])
+        return KMeans(n_clusters=k, n_init=10, random_state=0).fit_predict(z)
     if method == "kmeans":
-        return _kmeans_labels(matrix, min_cluster_size)
+        return _kmeans_labels(z, min_cluster_size)
 
     try:
         from sklearn.cluster import HDBSCAN
 
-        clusterer = HDBSCAN(min_cluster_size=max(2, int(min_cluster_size)), copy=True)
-        labels = clusterer.fit_predict(matrix)
-        # If HDBSCAN found no real clusters (everything is noise), fall back.
-        if not np.any(labels != _NOISE_LABEL):
-            return _kmeans_labels(matrix, min_cluster_size)
+        labels = HDBSCAN(min_cluster_size=max(2, int(min_cluster_size)),
+                         copy=True).fit_predict(z)
+        # Mostly noise / no real clusters on a homogeneous library -> KMeans.
+        n_noise = int(np.sum(labels == _NOISE_LABEL))
+        n_real = len(set(labels)) - (1 if _NOISE_LABEL in labels else 0)
+        if n_real < 2 or n_noise > 0.5 * labels.shape[0]:
+            return _kmeans_labels(z, min_cluster_size)
         return labels
     except Exception:
-        return _kmeans_labels(matrix, min_cluster_size)
+        return _kmeans_labels(z, min_cluster_size)
 
 
 def _nearest_centroid_genre(
@@ -98,6 +130,7 @@ def cluster_tracks(
     run_id: str = "run",
     min_cluster_size: int = 2,
     method: str = "hdbscan",
+    n_clusters: Optional[int] = None,
 ) -> list[ClusterResult]:
     """Cluster all embeddings of ``model`` and persist the groups.
 
@@ -113,7 +146,7 @@ def cluster_tracks(
         return []
 
     matrix = np.asarray(matrix, dtype=np.float32)
-    labels = _label_points(matrix, min_cluster_size, method)
+    labels = _label_points(matrix, min_cluster_size, method, n_clusters=n_clusters)
 
     # Group row indices by label, preserving label order, excluding noise.
     groups: dict[int, list[int]] = {}
