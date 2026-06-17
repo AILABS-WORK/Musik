@@ -12,7 +12,7 @@ from typing import Callable, Optional
 
 from mgc.config import Config
 from mgc.store import Store
-from mgc.types import Suggestion
+from mgc.types import LEVEL_GENRE, LEVEL_SUBGENRE, GenreNode, Suggestion
 
 
 class Engine:
@@ -193,6 +193,90 @@ class Engine:
         root = self.config.organize_root or str(Path(self.config.library_root or ".") / "_organized")
         plan = plan_organize(self.store, root)
         return execute_organize(self.store, plan, mode=self.config.organize_mode, dry_run=dry_run)
+
+    def auto_organize(self, n_groups: int = 12, dry_run: bool = True,
+                      use_musicbrainz: bool = False, parent: str = "Electronic") -> dict:
+        """Cluster the library by sound, name each group, create genres, plan folders.
+
+        End-to-end "drop a dump, get sorted genre folders": groups tracks by whole-track
+        sound (the signal we measured as best), names each group from the most common
+        MusicBrainz genre among its representative tracks (``use_musicbrainz``) or its
+        dominant AudioSet sound tag, creates a ``<parent>/<group>`` genre pair, assigns
+        every member, and returns the organize plan. Dry-run by default so the folder
+        tree can be reviewed before any file is touched.
+        """
+        import numpy as np
+        from collections import Counter
+
+        clusters = self.cluster(n_clusters=n_groups)
+        if not clusters:
+            return {"parent": parent, "groups": [], "plan": []}
+
+        model = self.model if self.store.load_matrix(self.model)[0] else self.classify_model
+        ids, mat = self.store.load_matrix(model)
+        mat = np.asarray(mat, dtype=np.float32)
+        pos = {t: i for i, t in enumerate(ids)}
+
+        from mgc.tagging import get_audioset_labels, top_tags
+        labels = get_audioset_labels() or []
+
+        parent_id = self.store.upsert_genre(
+            GenreNode(name=parent, level=LEVEL_GENRE, source="custom"))
+        used: dict[str, int] = {}
+        groups_out = []
+
+        for c in clusters:
+            members = c.member_track_ids
+            pairs = [(t, pos[t]) for t in members if t in pos]
+            if pairs:  # representative tracks = closest to the cluster centroid
+                sub = mat[[p[1] for p in pairs]]
+                cen = sub.mean(0)
+                cen = cen / (np.linalg.norm(cen) + 1e-9)
+                order = np.argsort(-(sub @ cen))
+                reps = [pairs[i][0] for i in order[:5]]
+            else:
+                reps = members[:5]
+
+            name = None
+            if use_musicbrainz:
+                votes: Counter = Counter()
+                for tid in reps:
+                    tk = self.store.get_track(tid)
+                    art = (tk.existing_tags or {}).get("artist") if tk else None
+                    if not art:
+                        continue
+                    try:
+                        r = self.mb_lookup(art, (tk.existing_tags or {}).get("title"))
+                        for g in (r.get("genres") or [])[:2]:
+                            votes[str(g).lower()] += 1
+                    except Exception:
+                        pass
+                if votes:
+                    name = votes.most_common(1)[0][0]
+
+            if not name:  # AudioSet sound tag fallback
+                tagc: Counter = Counter()
+                for tid in members:
+                    u = self.store.get_understanding(tid)
+                    if u and u.get("audioset") is not None and labels:
+                        for tg in top_tags(u["audioset"], labels, k=2):
+                            if tg["label"] != "Music":
+                                tagc[tg["label"]] += 1
+                name = tagc.most_common(1)[0][0] if tagc else f"Group {c.cluster_id}"
+
+            name = str(name).title()
+            used[name] = used.get(name, 0) + 1
+            disp = name if used[name] == 1 else f"{name} {used[name]}"
+
+            sub_id = self.store.upsert_genre(
+                GenreNode(name=disp, parent_id=parent_id, level=LEVEL_SUBGENRE, source="custom"))
+            for tid in members:
+                self.store.set_assignment(tid, sub_id, 0.5, "cluster", status="suggested")
+            groups_out.append({"genre": disp, "size": len(members)})
+
+        plan = self.organize(dry_run=dry_run)
+        return {"parent": parent, "groups": sorted(groups_out, key=lambda g: -g["size"]),
+                "plan": plan, "count": len(plan)}
 
     def undo(self) -> dict:
         from mgc.actions.tags import undo_tags

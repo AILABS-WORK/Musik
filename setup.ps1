@@ -22,12 +22,17 @@ Write-Host "[2/5] Installing engine + server..." -ForegroundColor Yellow
 & $py -m pip install -q -U pip
 & $py -m pip install -q -e "engine[server]"
 
-# 3) CUDA PyTorch (NVIDIA, e.g. RTX 5080) + music model backends
-# NOTE: engine[server] above pulls the CPU torch from PyPI, so we MUST
-# --force-reinstall the cu128 build or pip leaves the CPU one in place (no GPU).
-Write-Host "[3/5] Installing CUDA PyTorch (cu128) + music models (large download, be patient)..." -ForegroundColor Yellow
-& $py -m pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+# 3) Music model backends + CUDA PyTorch.
+# ORDER MATTERS: the model backends (engine[models], muq) each pull a CPU torch
+# (and muq pulls a mismatched torchvision) from PyPI. So we install all of them
+# FIRST, then --force-reinstall the cu128 torch/vision/audio LAST so the GPU build
+# wins. Skipping this leaves a CPU torch (no GPU) or a broken torchvision DLL.
+Write-Host "[3/5] Installing music model backends (MERT, MuQ, ...)..." -ForegroundColor Yellow
 & $py -m pip install -q -e "engine[models]"
+& $py -m pip install -q muq   # MuQ: MARBLE-SOTA music encoder (recommended default)
+
+Write-Host "    Installing CUDA PyTorch (cu128, large download, be patient)..." -ForegroundColor Yellow
+& $py -m pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 $cuda = & $py -c "import torch; print(torch.cuda.is_available())"
 Write-Host "    PyTorch CUDA available: $cuda" -ForegroundColor Green
 if ($cuda -ne "True") {
