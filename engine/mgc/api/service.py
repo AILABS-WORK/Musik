@@ -135,8 +135,15 @@ class Engine:
 
     # ---- clustering + similarity -------------------------------------------
     def cluster(self, min_cluster_size: int = 2, n_clusters: Optional[int] = None):
+        # Cluster on the pure SOUND embedding (timbre/texture), not the fused vector:
+        # genre grouping should be by how a track sounds, not its tempo/energy (BPM
+        # is metadata). Falls back to the fused/base space only if the raw model has
+        # no embeddings.
         from mgc.cluster.cluster import cluster_tracks
-        return cluster_tracks(self.store, self.classify_model,
+        model = self.model
+        if not self.store.load_matrix(model)[0]:
+            model = self.classify_model
+        return cluster_tracks(self.store, model,
                               min_cluster_size=min_cluster_size, n_clusters=n_clusters)
 
     def similar(self, track_id: int, n: int = 10):
