@@ -27,6 +27,7 @@ _HOP = 512
 # Tempo search band (BPM).
 _BPM_MIN = 40.0
 _BPM_MAX = 240.0
+_BPM_FOLD_MIN = 90.0  # fold detected tempo into [90, 180) for DJ-typical BPMs
 
 _PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -127,6 +128,15 @@ def _tempo_from_env(env: np.ndarray, sr: int) -> tuple[float, float, float]:
         return 0.0, 0.0, 0.0
 
     bpm = float(60.0 * frames_per_sec / lag)
+    # Octave-fold into a DJ-typical range: autocorrelation very often locks onto
+    # the half-tempo (e.g. 140 BPM techno read as 70), which is useless for mixing.
+    # Fold into [90, 180): 70->140, 66->132, 200->100. Right for electronic/dance
+    # libraries; a genuine sub-90 track is reported at its double.
+    if bpm > 0:
+        while bpm < _BPM_FOLD_MIN:
+            bpm *= 2.0
+        while bpm >= 2.0 * _BPM_FOLD_MIN:
+            bpm /= 2.0
     beat_strength = float(np.clip(band[peak_rel], 0.0, 1.0))
 
     # Regularity: presence of a harmonic peak at twice the lag (steady pulse).
