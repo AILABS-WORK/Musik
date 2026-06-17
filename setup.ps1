@@ -23,11 +23,17 @@ Write-Host "[2/5] Installing engine + server..." -ForegroundColor Yellow
 & $py -m pip install -q -e "engine[server]"
 
 # 3) CUDA PyTorch (NVIDIA, e.g. RTX 5080) + music model backends
+# NOTE: engine[server] above pulls the CPU torch from PyPI, so we MUST
+# --force-reinstall the cu128 build or pip leaves the CPU one in place (no GPU).
 Write-Host "[3/5] Installing CUDA PyTorch (cu128) + music models (large download, be patient)..." -ForegroundColor Yellow
-& $py -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+& $py -m pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 & $py -m pip install -q -e "engine[models]"
 $cuda = & $py -c "import torch; print(torch.cuda.is_available())"
 Write-Host "    PyTorch CUDA available: $cuda" -ForegroundColor Green
+if ($cuda -ne "True") {
+  Write-Host "    WARNING: CUDA not detected. The app will run on CPU (slow)." -ForegroundColor Red
+  Write-Host "    Check 'nvidia-smi' works and re-run, or your GPU/driver may need attention." -ForegroundColor Red
+}
 
 # 4) App (frontend) dependencies
 Write-Host "[4/5] Installing app dependencies (npm)..." -ForegroundColor Yellow
