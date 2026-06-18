@@ -40,7 +40,15 @@ def fpcalc_path() -> str:
 
 
 def api_key(explicit: str | None = None) -> str | None:
-    return explicit or os.environ.get("MGC_ACOUSTID_KEY") or None
+    if explicit:
+        return explicit
+    try:
+        from mgc._env import load_env
+
+        load_env()
+    except Exception:
+        pass
+    return os.environ.get("ACOUSTID_API_KEY") or os.environ.get("MGC_ACOUSTID_KEY") or None
 
 
 def fingerprint(path: str) -> tuple[float, bytes]:

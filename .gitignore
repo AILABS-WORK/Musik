@@ -42,6 +42,16 @@ data/
 /mgc-*.png
 /mgc_*.png
 
+# Secrets / local env (AcoustID key etc.) — never commit
+.env
+*.env
+**/.env
+!*.env.example
+
+# Chromaprint binary (downloaded by setup.ps1)
+fpcalc
+fpcalc.exe
+
 # OS
 .DS_Store
 Thumbs.db
