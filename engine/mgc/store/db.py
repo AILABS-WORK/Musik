@@ -406,6 +406,35 @@ class Store:
         ).fetchone()
         return row is not None
 
+    # ---- AcoustID/MusicBrainz identity ------------------------------------
+    def save_identity(self, track_id: int, recording_mbid=None, artist=None, title=None,
+                      genres=None, area=None, year=None, score=None) -> None:
+        self.conn.execute(
+            """INSERT INTO identity(track_id, recording_mbid, artist, title, genres, area, year, score)
+               VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(track_id) DO UPDATE SET
+                 recording_mbid=excluded.recording_mbid, artist=excluded.artist,
+                 title=excluded.title, genres=excluded.genres, area=excluded.area,
+                 year=excluded.year, score=excluded.score, updated_at=CURRENT_TIMESTAMP""",
+            (track_id, recording_mbid, artist, title,
+             json.dumps(genres or []), area, year, score),
+        )
+        self.conn.commit()
+
+    def get_identity(self, track_id: int) -> Optional[dict]:
+        row = self.conn.execute("SELECT * FROM identity WHERE track_id=?", (track_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["genres"] = json.loads(d["genres"]) if d["genres"] else []
+        return d
+
+    def has_identity(self, track_id: int) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM identity WHERE track_id=? AND recording_mbid IS NOT NULL", (track_id,)
+        ).fetchone()
+        return row is not None
+
     # ---- multi-label genre suggestions ------------------------------------
     def save_suggestions(self, track_id: int, items: list) -> None:
         """items: list of (genre_id, confidence, method), best first."""

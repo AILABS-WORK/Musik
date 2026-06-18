@@ -563,6 +563,16 @@ export default function App() {
       setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.tag();
       await waitForProgress();
+      // identify by fingerprint -> real MusicBrainz genres (best-effort: needs a key)
+      report("auto: identifying tracks (AcoustID)…");
+      setJobKind("identify");
+      setProgress({ running: true, done: 0, total: 0, last: "", error: null });
+      try {
+        await api.identifyAll();
+        await waitForProgress();
+      } catch {
+        report("auto: skipped AcoustID (no key) — using sound-tag names");
+      }
       // cluster into major genre folders + subgenres (dry-run preview first)
       report("auto: grouping into genres…");
       setJobKind("auto");

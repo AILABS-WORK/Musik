@@ -102,6 +102,21 @@ CREATE TABLE IF NOT EXISTS understanding (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+-- AcoustID/MusicBrainz identity: the track recognised by its audio fingerprint,
+-- giving authoritative artist/title/genre/region regardless of messy filenames.
+CREATE TABLE IF NOT EXISTS identity (
+    track_id        INTEGER PRIMARY KEY,
+    recording_mbid  TEXT,
+    artist          TEXT,
+    title           TEXT,
+    genres          TEXT,          -- JSON list of MusicBrainz genres (authoritative)
+    area            TEXT,          -- region (release country)
+    year            TEXT,
+    score           REAL,          -- AcoustID match score 0..1
+    updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+
 -- top-N genre suggestions per track (a track can be a blend): the primary is the
 -- stored assignment; these are the alternatives with their scores, for relabeling.
 CREATE TABLE IF NOT EXISTS suggestions (

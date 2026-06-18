@@ -60,6 +60,8 @@ export const api = {
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),
+  /** Recognise tracks by audio fingerprint (AcoustID) -> real MusicBrainz genre. */
+  identifyAll: () => req<{ started: boolean }>("POST", "/api/identify"),
   deep: () => req<{ started: boolean }>("POST", "/api/deep"),
   fuse: () => req<{ started: boolean }>("POST", "/api/fuse"),
   deepOne: (id: number) =>

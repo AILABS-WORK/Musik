@@ -28,6 +28,7 @@ models = [
     "truststore",         # OS trust store for HF downloads behind TLS-inspecting proxies
     "laion-clap",         # CLAP (audio+text); pins older deps — install in its own env if it conflicts
     "librosa",            # richer decode/features
+    "pyacoustid",         # AcoustID fingerprint identification (needs the fpcalc binary)
     # essentia / essentia-tensorflow (Discogs-EffNet) — install per-platform; see README (Windows caveat)
 ]
 viz = [

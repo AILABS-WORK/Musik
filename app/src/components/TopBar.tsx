@@ -10,6 +10,7 @@ const JOB_VERB: Record<JobKind, string> = {
   embed: "listening",
   analyze: "analyzing",
   tag: "tagging",
+  identify: "identifying",
   deep: "deep-analyzing",
   fuse: "fusing",
   mbseed: "seeding from MusicBrainz",

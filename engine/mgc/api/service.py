@@ -217,45 +217,53 @@ class Engine:
         mat = np.asarray(mat, dtype=np.float32)
         labels = get_audioset_labels() or []
 
-        # Only name from real MUSIC-GENRE tags. AudioSet also has sound-quality tags
-        # (Throbbing, Hum, Drum machine, Speech) that are useless as folder names; we
-        # ignore everything outside this genre vocabulary.
-        # SPECIFIC genres only. The umbrella tags ("Electronic music", "Dance music",
-        # "Electronica") sit on nearly every track and would swallow the whole library
-        # into one folder, so they are deliberately excluded; a cluster with no specific
-        # genre tag falls back to "Electronic".
-        GENRES = {
+        # AudioSet fallback vocabulary: specific genres only. Umbrella tags ("Electronic
+        # music", "Dance music") sit on every track and would collapse the whole library
+        # into one folder, so they are excluded.
+        AUDIOSET_GENRES = {
             "house music", "techno", "dubstep", "drum and bass", "ambient music",
             "trance music", "disco", "funk", "trip hop", "pop music", "hip hop music",
-            "rock music", "jazz", "reggae", "soul music", "rhythm and blues",
-            "classical music", "folk music", "country", "blues", "new-age music",
+            "rock music", "jazz", "reggae", "soul music", "classical music",
         }
-        # Per-track genre tags (top few) + library-wide frequency, so a group can be
-        # named by the genre most *over-represented* in it, not the one common everywhere.
-        track_tags: dict[int, list[str]] = {}
-        global_freq: Counter = Counter()
-        for tid in ids:
-            u = self.store.get_understanding(tid)
-            tags = []
-            if u and u.get("audioset") is not None and labels:
-                for tg in top_tags(u["audioset"], labels, k=5):
-                    if tg["label"].lower() in GENRES:
-                        tags.append(tg["label"])
-            track_tags[tid] = tags
-            global_freq.update(set(tags))
-        total = max(1, len(ids))
+        # Broad parent for the major folder; longest names first so "minimal techno"
+        # -> Techno and "tech house" -> House.
+        BROAD = ["drum and bass", "minimal techno", "tech house", "deep house",
+                 "techno", "house", "trance", "disco", "dubstep", "ambient",
+                 "trip hop", "breakbeat", "garage", "hardcore", "downtempo",
+                 "funk", "soul", "jazz", "hip hop", "reggae", "pop", "rock"]
 
         def clean(name: str) -> str:
             return name.replace(" music", "").replace(" Music", "").strip().title()
 
+        # Per-track genres: AcoustID/MusicBrainz identity (authoritative + specific) when
+        # available, else AudioSet's specific-genre tags. This is the AcoustID payoff: a
+        # track recognised by its sound carries a real genre regardless of its filename.
+        track_genres: dict[int, list[str]] = {}
+        for tid in ids:
+            idn = self.store.get_identity(tid)
+            if idn and idn.get("genres"):
+                track_genres[tid] = [g.lower() for g in idn["genres"]]
+                continue
+            u = self.store.get_understanding(tid)
+            tags = []
+            if u and u.get("audioset") is not None and labels:
+                for tg in top_tags(u["audioset"], labels, k=5):
+                    if tg["label"].lower() in AUDIOSET_GENRES:
+                        tags.append(tg["label"].lower())
+            track_genres[tid] = tags
+
         def dominant_genre(rows):
-            """Genre name for a fine cluster: its most common AudioSet genre tag. We use
-            raw frequency (not lift), since a homogeneous electronic library makes lift
-            amplify rare mislabels (Soul/Funk) over the true dominant genre."""
             gf: Counter = Counter()
             for r in rows:
-                gf.update(set(track_tags.get(ids[r], [])))
+                gf.update(set(track_genres.get(ids[r], [])))
             return clean(gf.most_common(1)[0][0]) if gf else "Electronic"
+
+        def major_of(genre: str) -> str:
+            g = genre.lower()
+            for kw in BROAD:
+                if kw in g:
+                    return clean(kw)
+            return clean(genre)  # already broad / unknown -> itself
 
         def kmeans_rows(rows, k):
             if k <= 1 or len(rows) <= k:
@@ -266,28 +274,31 @@ class Engine:
                 out.setdefault(int(l), []).append(r)
             return list(out.values())
 
-        # Fine sound clusters, then merge those sharing a genre into one major folder.
+        # Fine sound clusters; each becomes a subgenre (its dominant real genre) under
+        # that genre's broad major folder. Clusters that resolve to the same names merge.
         fine = kmeans_rows(list(range(len(ids))), min(n_groups, len(ids)))
-        by_major: dict[str, list] = {}
+        majors: dict[str, dict] = {}   # major -> {subgenre name -> [rows]}
         for frows in fine:
-            by_major.setdefault(dominant_genre(frows), []).append(frows)
+            sub = dominant_genre(frows)
+            maj = major_of(sub)
+            majors.setdefault(maj, {})
+            sname = sub if clean(sub) != maj else f"{maj} {len(majors[maj]) + 1}"
+            majors[maj].setdefault(sname, []).extend(frows)
 
         tree = []
-        for mname, fine_clusters in by_major.items():
+        for maj, subs in majors.items():
             parent_id = self.store.upsert_genre(
-                GenreNode(name=mname, level=LEVEL_GENRE, source="custom"))
-            fine_clusters.sort(key=len, reverse=True)
+                GenreNode(name=maj, level=LEVEL_GENRE, source="custom"))
             subs_out, size = [], 0
-            for i, frows in enumerate(fine_clusters, 1):
-                sname = f"{mname} {i}"
+            for sname, rows in sorted(subs.items(), key=lambda kv: -len(kv[1])):
                 sub_id = self.store.upsert_genre(
                     GenreNode(name=sname, parent_id=parent_id,
                               level=LEVEL_SUBGENRE, source="custom"))
-                for r in frows:
+                for r in rows:
                     self.store.set_assignment(ids[r], sub_id, 0.5, "cluster", status="suggested")
-                subs_out.append({"name": sname, "size": len(frows)})
-                size += len(frows)
-            tree.append({"major": mname, "size": size, "subgenres": subs_out})
+                subs_out.append({"name": sname, "size": len(rows)})
+                size += len(rows)
+            tree.append({"major": maj, "size": size, "subgenres": subs_out})
 
         plan = self.organize(dry_run=dry_run)
         return {"tree": sorted(tree, key=lambda t: -t["size"]),
@@ -368,6 +379,45 @@ class Engine:
     def mb_lookup(self, artist: str, title: Optional[str] = None) -> dict:
         from mgc.metadata import mb_lookup
         return mb_lookup(artist, title)
+
+    def identify_all(self, key: Optional[str] = None, force: bool = False,
+                     progress: Optional[Callable] = None, limit: Optional[int] = None) -> dict:
+        """Recognise every track by its audio fingerprint (AcoustID) and store the
+        authoritative MusicBrainz genre/artist/title/region. Resumable (skips already
+        identified) and best-effort (a miss leaves the track for the AudioSet fallback).
+        Needs a free AcoustID key (``MGC_ACOUSTID_KEY`` or ``key``)."""
+        import os
+
+        from mgc.metadata import acoustid as aid, mb_lookup_by_mbid
+
+        if self.config.fpcalc_path:
+            os.environ["MGC_FPCALC"] = self.config.fpcalc_path
+        k = aid.api_key(key or self.config.acoustid_key)
+        if not k:
+            return {"error": "no_acoustid_key", "identified": 0, "total": 0}
+        tracks = self.store.iter_tracks()
+        if limit:
+            tracks = tracks[:limit]
+        identified = 0
+        for i, t in enumerate(tracks):
+            if not force and self.store.has_identity(t.id):
+                identified += 1
+            else:
+                res = aid.identify(t.path, key=k)
+                mbid = res.get("recording_mbid")
+                if mbid:
+                    meta = mb_lookup_by_mbid(mbid)
+                    self.store.save_identity(
+                        t.id, recording_mbid=mbid,
+                        artist=meta.get("artist") or res.get("artist"),
+                        title=meta.get("title") or res.get("title"),
+                        genres=meta.get("genres") or [],
+                        area=meta.get("area"), year=meta.get("year"),
+                        score=res.get("score"))
+                    identified += 1
+            if progress:
+                progress(i + 1, len(tracks))
+        return {"identified": identified, "total": len(tracks)}
 
     def seed_from_musicbrainz(self, min_examples: int = 3, progress=None) -> dict:
         from mgc.metadata import seed_genres_from_mb

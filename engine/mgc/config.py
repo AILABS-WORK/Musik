@@ -33,6 +33,9 @@ class Config:
     organize_mode: str = "copy"  # copy | move
     # Output: tags — write the specific subgenre into the single genre field
     write_parent_to_grouping: bool = False
+    # AcoustID identification (real genre names from the audio fingerprint).
+    acoustid_key: Optional[str] = None      # free key: acoustid.org/new-application
+    fpcalc_path: Optional[str] = None       # path to the Chromaprint fpcalc binary
 
     extensions: tuple = field(default_factory=lambda: SUPPORTED_EXTS)
 

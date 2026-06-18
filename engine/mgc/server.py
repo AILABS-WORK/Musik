@@ -564,6 +564,30 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """Compute AudioSet-527 tags for untagged tracks (background)."""
         return {"started": start_tagging()}
 
+    def start_identifying() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="identifying…", error=None)
+            try:
+                with app.state.lock:
+                    res = eng().identify_all(progress=lambda d, t: p.update(done=d, total=t))
+                if res.get("error") == "no_acoustid_key":
+                    p["error"] = "Set MGC_ACOUSTID_KEY (free key at acoustid.org/new-application)"
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/identify")
+    def identify_all_ep():
+        """Recognise tracks by audio fingerprint (AcoustID) -> MusicBrainz genre (background)."""
+        return {"started": start_identifying()}
+
     @app.post("/api/search")
     def search_ep(body: SearchIn):
         """Open-vocabulary attribute search ('songs with cowbells')."""

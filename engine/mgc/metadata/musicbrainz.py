@@ -64,6 +64,38 @@ def parse_recording(data: dict) -> dict:
     }
 
 
+def mb_lookup_by_mbid(recording_mbid: str, get=None) -> dict:
+    """Authoritative metadata for a recording we already identified (via AcoustID).
+
+    AcoustID gives us the exact recording MBID, so no fuzzy artist/title search is
+    needed: one direct fetch with genres/tags/artist/releases. Returns
+    ``parse_recording()`` plus ``recording_mbid``, ``title`` and a best-effort
+    ``area`` (release country = region). ``{}`` / ``{"error": ...}`` on miss.
+    """
+    get = get or _get
+    if not recording_mbid:
+        return {}
+    try:
+        url = (f"{_BASE}/recording/{recording_mbid}"
+               "?inc=genres+tags+artist-credits+releases&fmt=json")
+        data = get(url)
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    info = parse_recording(data)
+    info["recording_mbid"] = recording_mbid
+    info["title"] = data.get("title")
+    for rel in data.get("releases") or []:
+        country = rel.get("country")
+        if not country:
+            events = rel.get("release-events") or []
+            if events:
+                country = (events[0].get("area") or {}).get("name")
+        if country:
+            info["area"] = country
+            break
+    return info
+
+
 def mb_lookup(artist: str, title: str | None = None, get=None) -> dict:
     """MusicBrainz metadata for a track by ``artist`` [+ ``title``].
 

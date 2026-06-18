@@ -29,7 +29,23 @@ Write-Host "[2/5] Installing engine + server..." -ForegroundColor Yellow
 # wins. Skipping this leaves a CPU torch (no GPU) or a broken torchvision DLL.
 Write-Host "[3/5] Installing music model backends (MERT, MuQ, ...)..." -ForegroundColor Yellow
 & $py -m pip install -q -e "engine[models]"
-& $py -m pip install -q muq   # MuQ: MARBLE-SOTA music encoder (recommended default)
+& $py -m pip install -q muq          # MuQ: MARBLE-SOTA music encoder (recommended default)
+& $py -m pip install -q pyacoustid   # AcoustID fingerprint identification
+
+# Chromaprint fpcalc (audio fingerprinting for AcoustID identification). Dropped next
+# to the venv python so the engine auto-discovers it (see metadata/acoustid.py).
+$fpcalc = Join-Path $root "engine\.venv\Scripts\fpcalc.exe"
+if (-not (Test-Path $fpcalc)) {
+  Write-Host "    Downloading Chromaprint fpcalc..." -ForegroundColor Yellow
+  $cp = "https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip"
+  $zip = Join-Path $env:TEMP "fpcalc.zip"; $ex = Join-Path $env:TEMP "fpcalc_x"
+  try {
+    Invoke-WebRequest -Uri $cp -OutFile $zip
+    Expand-Archive -Path $zip -DestinationPath $ex -Force
+    Copy-Item (Get-ChildItem $ex -Recurse -Filter fpcalc.exe | Select-Object -First 1).FullName $fpcalc -Force
+    Write-Host "    fpcalc installed." -ForegroundColor Green
+  } catch { Write-Host "    fpcalc download failed (AcoustID will be unavailable): $_" -ForegroundColor Red }
+}
 
 Write-Host "    Installing CUDA PyTorch (cu128, large download, be patient)..." -ForegroundColor Yellow
 & $py -m pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128

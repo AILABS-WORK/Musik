@@ -1,7 +1,7 @@
 import type { Progress } from "../types";
 
 /** The background jobs the banner can speak about, in plain language. */
-export type JobKind = "embed" | "analyze" | "tag" | "deep" | "fuse" | "mbseed" | "suggest" | "auto";
+export type JobKind = "embed" | "analyze" | "tag" | "identify" | "deep" | "fuse" | "mbseed" | "suggest" | "auto";
 
 interface JobNote {
   kind: JobKind;
@@ -23,6 +23,7 @@ const RUNNING_LABEL: Record<JobKind, string> = {
   embed: "Listening to your tracks",
   analyze: "Analyzing BPM, key & energy",
   tag: "Tagging sounds",
+  identify: "Identifying tracks by sound (AcoustID)",
   deep: "Deep analysis — separating stems & detecting language",
   fuse: "Fusing signals for sharper grouping",
   mbseed: "Building genres from MusicBrainz",
@@ -35,6 +36,7 @@ const DONE_LABEL: Record<JobKind, string> = {
   embed: "Tracks listened to",
   analyze: "Analysis complete",
   tag: "Sounds tagged",
+  identify: "Tracks identified",
   deep: "Deep analysis complete",
   fuse: "Signals fused",
   mbseed: "Genres seeded from MusicBrainz",
