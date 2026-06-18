@@ -33,8 +33,10 @@ def test_identify_uses_injected_fingerprint_and_lookup():
     assert out["recording_mbid"] == "rec-42" and out["score"] == 0.95
 
 
-def test_identify_without_key_reports_missing():
-    out = aid.identify("x.mp3", key=None, looker=lambda *a: [], fingerprinter=lambda p: (1.0, b""))
+def test_identify_without_key_reports_missing(monkeypatch):
+    # force "no key" regardless of any .env / env var in the test environment
+    monkeypatch.setattr(aid, "api_key", lambda explicit=None: None)
+    out = aid.identify("x.mp3", looker=lambda *a: [], fingerprinter=lambda p: (1.0, b""))
     assert out.get("error") == "no_acoustid_key"
 
 
