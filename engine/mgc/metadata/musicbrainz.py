@@ -77,22 +77,34 @@ def mb_lookup_by_mbid(recording_mbid: str, get=None) -> dict:
         return {}
     try:
         url = (f"{_BASE}/recording/{recording_mbid}"
-               "?inc=genres+tags+artist-credits+releases&fmt=json")
+               "?inc=genres+tags+artist-credits+releases+release-groups&fmt=json")
         data = get(url)
     except Exception as e:
         return {"error": str(e)[:200]}
     info = parse_recording(data)
     info["recording_mbid"] = recording_mbid
     info["title"] = data.get("title")
+
+    # Genres are sparse at the recording level; aggregate from the release-group too,
+    # and fall back to the artist's genres (usually populated). Also grab a region.
+    genres = list(info.get("genres") or [])
     for rel in data.get("releases") or []:
-        country = rel.get("country")
-        if not country:
-            events = rel.get("release-events") or []
-            if events:
-                country = (events[0].get("area") or {}).get("name")
-        if country:
-            info["area"] = country
-            break
+        genres += _genre_names(rel.get("release-group") or {})
+        if not info.get("area"):
+            country = rel.get("country")
+            if not country:
+                events = rel.get("release-events") or []
+                country = (events[0].get("area") or {}).get("name") if events else None
+            if country:
+                info["area"] = country
+    if not genres and info.get("artist_mbid"):
+        try:
+            artist = get(f"{_BASE}/artist/{info['artist_mbid']}?inc=genres&fmt=json")
+            genres += _genre_names(artist)
+        except Exception:
+            pass
+    seen: set = set()
+    info["genres"] = [g for g in genres if not (g in seen or seen.add(g))]
     return info
 
 

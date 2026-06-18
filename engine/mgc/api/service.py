@@ -238,11 +238,16 @@ class Engine:
         # Per-track genres: AcoustID/MusicBrainz identity (authoritative + specific) when
         # available, else AudioSet's specific-genre tags. This is the AcoustID payoff: a
         # track recognised by its sound carries a real genre regardless of its filename.
+        # Broad umbrellas appear on nearly every artist; drop them so the specific
+        # genre (techno/french house) wins the vote instead of "electronic".
+        UMBRELLA = {"electronic", "electronica", "edm", "dance", "club", "pop",
+                    "instrumental", "experimental", "electro", "leftfield"}
         track_genres: dict[int, list[str]] = {}
         for tid in ids:
             idn = self.store.get_identity(tid)
             if idn and idn.get("genres"):
-                track_genres[tid] = [g.lower() for g in idn["genres"]]
+                specific = [g.lower() for g in idn["genres"] if g.lower() not in UMBRELLA]
+                track_genres[tid] = specific or [g.lower() for g in idn["genres"]]
                 continue
             u = self.store.get_understanding(tid)
             tags = []
