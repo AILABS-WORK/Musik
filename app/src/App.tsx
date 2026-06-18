@@ -553,17 +553,30 @@ export default function App() {
       setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.embed();
       await waitForProgress();
-      report("auto: analyzing…");
+      report("auto: analyzing tempo + key…");
       setJobKind("analyze");
       setProgress({ running: true, done: 0, total: 0, last: "", error: null });
       await api.analyze();
       await waitForProgress();
-      report("auto: classifying…");
-      setJobKind("suggest");
+      report("auto: tagging sounds…");
+      setJobKind("tag");
       setProgress({ running: true, done: 0, total: 0, last: "", error: null });
-      await api.suggest();
+      await api.tag();
+      await waitForProgress();
+      // cluster into major genre folders + subgenres (dry-run preview first)
+      report("auto: grouping into genres…");
+      setJobKind("auto");
+      setProgress(null);
+      const preview = await api.autoOrganize(false);
+      const tree = preview.tree
+        .map((t) => `${t.major} (${t.size})`)
+        .join(", ");
+      report(`auto: ${preview.tree.length} genres — ${tree}`);
+      // copy every track into root/<Major>/<Subgenre>/ (originals untouched; undo available)
+      report("auto: sorting files into folders…");
+      const done = await api.autoOrganize(true);
       await refreshAll();
-      report("auto: done");
+      report(`auto: sorted ${done.count} files into ${preview.tree.length} genre folders. Undo available.`);
       flashJobNote("auto", null);
     } catch (e) {
       report(`auto-sort failed: ${errMsg(e)}`, true);

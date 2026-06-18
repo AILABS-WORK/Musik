@@ -455,6 +455,15 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             plan = eng().organize(dry_run=body.dry_run)
             return {"count": len(plan), "plan": plan[:200], "applied": not body.dry_run}
 
+    @app.post("/api/auto-organize")
+    def auto_organize(dry_run: bool = True, n_groups: int = 14):
+        """One-click: cluster the whole library into major genre folders + numbered
+        subgenres and (optionally) copy every track into them. Dry-run returns the
+        proposed tree without touching disk."""
+        with app.state.lock:
+            res = eng().auto_organize(n_groups=n_groups, dry_run=dry_run)
+            return {"tree": res["tree"], "count": res["count"], "applied": not dry_run}
+
     @app.post("/api/undo")
     def undo():
         with app.state.lock:

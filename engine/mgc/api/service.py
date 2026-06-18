@@ -194,88 +194,103 @@ class Engine:
         plan = plan_organize(self.store, root)
         return execute_organize(self.store, plan, mode=self.config.organize_mode, dry_run=dry_run)
 
-    def auto_organize(self, n_groups: int = 12, dry_run: bool = True,
-                      use_musicbrainz: bool = False, parent: str = "Electronic") -> dict:
-        """Cluster the library by sound, name each group, create genres, plan folders.
+    def auto_organize(self, n_groups: int = 14, dry_run: bool = True) -> dict:
+        """Two-level auto-organize: major genre folders, subgenre subfolders, sorted.
 
-        End-to-end "drop a dump, get sorted genre folders": groups tracks by whole-track
-        sound (the signal we measured as best), names each group from the most common
-        MusicBrainz genre among its representative tracks (``use_musicbrainz``) or its
-        dominant AudioSet sound tag, creates a ``<parent>/<group>`` genre pair, assigns
-        every member, and returns the organize plan. Dry-run by default so the folder
-        tree can be reviewed before any file is touched.
+        Drop the whole library in: cluster by sound into ``n_groups`` fine sound groups,
+        name each by its dominant AudioSet genre (Techno, House, Disco, ...), then MERGE
+        the fine groups that share a genre into one major folder, with each fine group a
+        numbered subgenre inside it (``root/<Major>/<Major N>/file``). Major names are
+        reliable genres; subgenres are real sound clusters with placeholder names (rename
+        freely). Dry-run by default so the tree can be reviewed before any file moves.
         """
         import numpy as np
         from collections import Counter
-
-        clusters = self.cluster(n_clusters=n_groups)
-        if not clusters:
-            return {"parent": parent, "groups": [], "plan": []}
+        from sklearn.cluster import KMeans
+        from mgc.cluster.cluster import _reduce
+        from mgc.tagging import get_audioset_labels, top_tags
 
         model = self.model if self.store.load_matrix(self.model)[0] else self.classify_model
         ids, mat = self.store.load_matrix(model)
+        if not ids:
+            return {"tree": [], "plan": [], "count": 0}
         mat = np.asarray(mat, dtype=np.float32)
-        pos = {t: i for i, t in enumerate(ids)}
-
-        from mgc.tagging import get_audioset_labels, top_tags
         labels = get_audioset_labels() or []
 
-        parent_id = self.store.upsert_genre(
-            GenreNode(name=parent, level=LEVEL_GENRE, source="custom"))
-        used: dict[str, int] = {}
-        groups_out = []
+        # Only name from real MUSIC-GENRE tags. AudioSet also has sound-quality tags
+        # (Throbbing, Hum, Drum machine, Speech) that are useless as folder names; we
+        # ignore everything outside this genre vocabulary.
+        # SPECIFIC genres only. The umbrella tags ("Electronic music", "Dance music",
+        # "Electronica") sit on nearly every track and would swallow the whole library
+        # into one folder, so they are deliberately excluded; a cluster with no specific
+        # genre tag falls back to "Electronic".
+        GENRES = {
+            "house music", "techno", "dubstep", "drum and bass", "ambient music",
+            "trance music", "disco", "funk", "trip hop", "pop music", "hip hop music",
+            "rock music", "jazz", "reggae", "soul music", "rhythm and blues",
+            "classical music", "folk music", "country", "blues", "new-age music",
+        }
+        # Per-track genre tags (top few) + library-wide frequency, so a group can be
+        # named by the genre most *over-represented* in it, not the one common everywhere.
+        track_tags: dict[int, list[str]] = {}
+        global_freq: Counter = Counter()
+        for tid in ids:
+            u = self.store.get_understanding(tid)
+            tags = []
+            if u and u.get("audioset") is not None and labels:
+                for tg in top_tags(u["audioset"], labels, k=5):
+                    if tg["label"].lower() in GENRES:
+                        tags.append(tg["label"])
+            track_tags[tid] = tags
+            global_freq.update(set(tags))
+        total = max(1, len(ids))
 
-        for c in clusters:
-            members = c.member_track_ids
-            pairs = [(t, pos[t]) for t in members if t in pos]
-            if pairs:  # representative tracks = closest to the cluster centroid
-                sub = mat[[p[1] for p in pairs]]
-                cen = sub.mean(0)
-                cen = cen / (np.linalg.norm(cen) + 1e-9)
-                order = np.argsort(-(sub @ cen))
-                reps = [pairs[i][0] for i in order[:5]]
-            else:
-                reps = members[:5]
+        def clean(name: str) -> str:
+            return name.replace(" music", "").replace(" Music", "").strip().title()
 
-            name = None
-            if use_musicbrainz:
-                votes: Counter = Counter()
-                for tid in reps:
-                    tk = self.store.get_track(tid)
-                    art = (tk.existing_tags or {}).get("artist") if tk else None
-                    if not art:
-                        continue
-                    try:
-                        r = self.mb_lookup(art, (tk.existing_tags or {}).get("title"))
-                        for g in (r.get("genres") or [])[:2]:
-                            votes[str(g).lower()] += 1
-                    except Exception:
-                        pass
-                if votes:
-                    name = votes.most_common(1)[0][0]
+        def dominant_genre(rows):
+            """Genre name for a fine cluster: its most common AudioSet genre tag. We use
+            raw frequency (not lift), since a homogeneous electronic library makes lift
+            amplify rare mislabels (Soul/Funk) over the true dominant genre."""
+            gf: Counter = Counter()
+            for r in rows:
+                gf.update(set(track_tags.get(ids[r], [])))
+            return clean(gf.most_common(1)[0][0]) if gf else "Electronic"
 
-            if not name:  # AudioSet sound tag fallback
-                tagc: Counter = Counter()
-                for tid in members:
-                    u = self.store.get_understanding(tid)
-                    if u and u.get("audioset") is not None and labels:
-                        for tg in top_tags(u["audioset"], labels, k=2):
-                            if tg["label"] != "Music":
-                                tagc[tg["label"]] += 1
-                name = tagc.most_common(1)[0][0] if tagc else f"Group {c.cluster_id}"
+        def kmeans_rows(rows, k):
+            if k <= 1 or len(rows) <= k:
+                return [list(rows)]
+            lab = KMeans(n_clusters=k, n_init=10, random_state=0).fit_predict(_reduce(mat[rows]))
+            out: dict[int, list[int]] = {}
+            for r, l in zip(rows, lab):
+                out.setdefault(int(l), []).append(r)
+            return list(out.values())
 
-            name = str(name).title()
-            used[name] = used.get(name, 0) + 1
-            disp = name if used[name] == 1 else f"{name} {used[name]}"
+        # Fine sound clusters, then merge those sharing a genre into one major folder.
+        fine = kmeans_rows(list(range(len(ids))), min(n_groups, len(ids)))
+        by_major: dict[str, list] = {}
+        for frows in fine:
+            by_major.setdefault(dominant_genre(frows), []).append(frows)
 
-            sub_id = self.store.upsert_genre(
-                GenreNode(name=disp, parent_id=parent_id, level=LEVEL_SUBGENRE, source="custom"))
-            for tid in members:
-                self.store.set_assignment(tid, sub_id, 0.5, "cluster", status="suggested")
-            groups_out.append({"genre": disp, "size": len(members)})
+        tree = []
+        for mname, fine_clusters in by_major.items():
+            parent_id = self.store.upsert_genre(
+                GenreNode(name=mname, level=LEVEL_GENRE, source="custom"))
+            fine_clusters.sort(key=len, reverse=True)
+            subs_out, size = [], 0
+            for i, frows in enumerate(fine_clusters, 1):
+                sname = f"{mname} {i}"
+                sub_id = self.store.upsert_genre(
+                    GenreNode(name=sname, parent_id=parent_id,
+                              level=LEVEL_SUBGENRE, source="custom"))
+                for r in frows:
+                    self.store.set_assignment(ids[r], sub_id, 0.5, "cluster", status="suggested")
+                subs_out.append({"name": sname, "size": len(frows)})
+                size += len(frows)
+            tree.append({"major": mname, "size": size, "subgenres": subs_out})
 
         plan = self.organize(dry_run=dry_run)
-        return {"parent": parent, "groups": sorted(groups_out, key=lambda g: -g["size"]),
+        return {"tree": sorted(tree, key=lambda t: -t["size"]),
                 "plan": plan, "count": len(plan)}
 
     def undo(self) -> dict:

@@ -113,6 +113,10 @@ export const api = {
     req<{ count: number; plans: any[]; applied: boolean }>("POST", "/api/write-tags", { dry_run }),
   organize: (dry_run: boolean) =>
     req<{ count: number; plan: any[]; applied: boolean }>("POST", "/api/organize", { dry_run }),
+  /** One-click hierarchical sort: major genre folders + numbered subgenres. */
+  autoOrganize: (execute = false, nGroups = 14) =>
+    req<{ tree: { major: string; size: number; subgenres: { name: string; size: number }[] }[]; count: number; applied: boolean }>(
+      "POST", `/api/auto-organize?dry_run=${!execute}&n_groups=${nGroups}`),
   undo: () => req<{ tags: number; organize: number }>("POST", "/api/undo"),
   seedTaxonomy: (refs_dir: string) => req<{ seeded: number }>("POST", "/api/seed-taxonomy", { refs_dir }),
 
