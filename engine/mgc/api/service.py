@@ -225,12 +225,12 @@ class Engine:
             "trance music", "disco", "funk", "trip hop", "pop music", "hip hop music",
             "rock music", "jazz", "reggae", "soul music", "classical music",
         }
-        # Broad parent for the major folder; longest names first so "minimal techno"
-        # -> Techno and "tech house" -> House.
-        BROAD = ["drum and bass", "minimal techno", "tech house", "deep house",
-                 "techno", "house", "trance", "disco", "dubstep", "ambient",
-                 "trip hop", "breakbeat", "garage", "hardcore", "downtempo",
-                 "funk", "soul", "jazz", "hip hop", "reggae", "pop", "rock"]
+        # TOP-LEVEL genres only -> the major folder. A specific style maps to its
+        # family ("minimal techno"/"deep techno" -> Techno, "tech house"/"deep house"
+        # -> House) and is then used as the *subgenre* name inside it.
+        BROAD = ["drum and bass", "techno", "house", "trance", "disco", "dubstep",
+                 "ambient", "trip hop", "breakbeat", "hardcore", "downtempo",
+                 "garage", "funk", "soul", "jazz", "hip hop", "reggae", "pop", "rock"]
 
         def clean(name: str) -> str:
             return name.replace(" music", "").replace(" Music", "").strip().title()
@@ -257,18 +257,28 @@ class Engine:
                         tags.append(tg["label"].lower())
             track_genres[tid] = tags
 
-        def dominant_genre(rows):
-            gf: Counter = Counter()
-            for r in rows:
-                gf.update(set(track_genres.get(ids[r], [])))
-            return clean(gf.most_common(1)[0][0]) if gf else "Electronic"
-
         def major_of(genre: str) -> str:
             g = genre.lower()
             for kw in BROAD:
                 if kw in g:
                     return clean(kw)
             return clean(genre)  # already broad / unknown -> itself
+
+        def vote_names(rows):
+            """A cluster's (major, subgenre): major = most-common top-level family;
+            subgenre = most-common *specific* style within that family (else None)."""
+            broad: Counter = Counter()
+            specific: list = []
+            for r in rows:
+                for g in track_genres.get(ids[r], []):
+                    m = major_of(g)
+                    broad[m] += 1
+                    specific.append((m, clean(g)))
+            if not broad:
+                return "Electronic", None
+            major = broad.most_common(1)[0][0]
+            spec = Counter(s for (m, s) in specific if m == major and s != major)
+            return major, (spec.most_common(1)[0][0] if spec else None)
 
         def kmeans_rows(rows, k):
             if k <= 1 or len(rows) <= k:
@@ -279,15 +289,14 @@ class Engine:
                 out.setdefault(int(l), []).append(r)
             return list(out.values())
 
-        # Fine sound clusters; each becomes a subgenre (its dominant real genre) under
-        # that genre's broad major folder. Clusters that resolve to the same names merge.
+        # Fine sound clusters; each lands in a major folder by its dominant family and
+        # is named by its dominant specific style. Same (major, subgenre) names merge.
         fine = kmeans_rows(list(range(len(ids))), min(n_groups, len(ids)))
         majors: dict[str, dict] = {}   # major -> {subgenre name -> [rows]}
         for frows in fine:
-            sub = dominant_genre(frows)
-            maj = major_of(sub)
+            maj, sub = vote_names(frows)
             majors.setdefault(maj, {})
-            sname = sub if clean(sub) != maj else f"{maj} {len(majors[maj]) + 1}"
+            sname = sub or f"{maj} {len(majors[maj]) + 1}"
             majors[maj].setdefault(sname, []).extend(frows)
 
         tree = []
