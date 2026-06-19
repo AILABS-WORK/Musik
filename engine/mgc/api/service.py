@@ -194,7 +194,8 @@ class Engine:
         plan = plan_organize(self.store, root)
         return execute_organize(self.store, plan, mode=self.config.organize_mode, dry_run=dry_run)
 
-    def auto_organize(self, n_groups: int = 14, dry_run: bool = True) -> dict:
+    def auto_organize(self, n_groups: int = 14, dry_run: bool = True,
+                      min_similarity: float = 0.5) -> dict:
         """Two-level auto-organize: major genre folders, subgenre subfolders, sorted.
 
         Drop the whole library in: cluster by sound into ``n_groups`` fine sound groups,
@@ -228,9 +229,12 @@ class Engine:
         # TOP-LEVEL genres only -> the major folder. A specific style maps to its
         # family ("minimal techno"/"deep techno" -> Techno, "tech house"/"deep house"
         # -> House) and is then used as the *subgenre* name inside it.
+        # "garage" must be checked AFTER "house"/"rock" so "garage house" -> House and
+        # "garage rock" -> Rock (a namesake, dropped by the electronic filter), while
+        # "uk garage"/"speed garage" still map to Garage.
         BROAD = ["drum and bass", "techno", "house", "trance", "disco", "dubstep",
                  "ambient", "trip hop", "breakbeat", "hardcore", "downtempo",
-                 "garage", "funk", "soul", "jazz", "hip hop", "reggae", "pop", "rock"]
+                 "funk", "soul", "jazz", "hip hop", "reggae", "rock", "pop", "garage"]
 
         def clean(name: str) -> str:
             return name.replace(" music", "").replace(" Music", "").strip().title()
@@ -326,27 +330,36 @@ class Engine:
                     anchors.append(tid)
 
         if anchors:
-            # 2) Similarity fill: every track without its own specific style inherits the
-            #    nearest specific-labeled track (preferring a neighbour in its own major).
-            amat = np.stack([mat[pos[t]] for t in anchors])
-            amat = amat / (np.linalg.norm(amat, axis=1, keepdims=True) + 1e-9)
+            # 2) Similarity fill in the PCA-REDUCED space. Raw 95M/MuQ embeddings are
+            #    near-uniform (~0.95 cosine to everything), so nearest-neighbour there is
+            #    meaningless; PCA removes the common baseline and exposes real structure.
+            #    A track only inherits a subgenre if it is genuinely close (>= min_similarity)
+            #    to an anchor; otherwise it goes to "<Major> - Unsorted" rather than being
+            #    forced into a wrong subgenre.
+            Z = _reduce(mat)  # PCA-reduced + L2-normalised
+            amat = np.stack([Z[pos[t]] for t in anchors])
             for tid in ids:
                 if tid in place and place[tid][1]:
-                    continue
-                v = mat[pos[tid]]
-                v = v / (np.linalg.norm(v) + 1e-9)
-                order = np.argsort(-(amat @ v))
+                    continue  # already has its own specific style
+                sims = amat @ Z[pos[tid]]
+                order = np.argsort(-sims)
                 cur_major = place.get(tid, (None, None))[0]
-                chosen = None
-                if cur_major:
-                    for j in order:
-                        if place[anchors[j]][0] == cur_major:
-                            chosen = place[anchors[j]]
-                            break
-                place[tid] = chosen or place[anchors[order[0]]]
+                if float(sims[order[0]]) >= min_similarity:
+                    chosen = None
+                    if cur_major:  # prefer a confident neighbour in the track's own major
+                        for j in order:
+                            if sims[j] < min_similarity:
+                                break
+                            if place[anchors[j]][0] == cur_major:
+                                chosen = place[anchors[j]]
+                                break
+                    place[tid] = chosen or place[anchors[order[0]]]
+                else:  # not confidently similar to anything -> major only, no fake subgenre
+                    place[tid] = (cur_major or place[anchors[order[0]]][0], None)
             grouping: dict[str, dict] = {}
             for tid, (maj, sub) in place.items():
-                grouping.setdefault(maj, {}).setdefault(sub or maj, []).append(pos[tid])
+                sname = sub or f"{maj} - Unsorted"
+                grouping.setdefault(maj, {}).setdefault(sname, []).append(pos[tid])
         else:
             # 3) No identities anywhere -> name fine sound clusters by AudioSet vote.
             grouping = {}
