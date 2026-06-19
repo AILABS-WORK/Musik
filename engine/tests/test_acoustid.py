@@ -57,6 +57,39 @@ def test_mb_lookup_by_mbid_parses_genre_and_region():
     assert info["year"] == "1997"
 
 
+def test_parse_artist_title_strips_premiere_and_label():
+    from mgc.metadata import parse_artist_title
+
+    a, t = parse_artist_title("BCCO Premiere: Alexander Johansson & Tim Hök - Sci-Fi Dub [LERICHE03]")
+    assert a == "Alexander Johansson & Tim Hök" and t == "Sci-Fi Dub"
+    a, t = parse_artist_title("PREMIERE: Enoch (SA) - Kaya [Label]")
+    assert a == "Enoch (SA)" and t == "Kaya"
+    # label as ID3 artist is rejected in favour of the parsed name
+    a, t = parse_artist_title("Reality Check", artist="Mixmag premiere")
+    assert a is None and t == "Reality Check"
+
+
+def test_discogs_parse_search_prefers_styles():
+    from mgc.metadata import discogs
+
+    data = {"results": [
+        {"id": 1, "genre": ["Electronic"], "style": []},          # no style -> still usable
+        {"id": 2, "genre": ["Electronic"], "style": ["Tech House"], "year": 2021},
+    ]}
+    out = discogs.parse_search(data)
+    # first result already has a genre, so it's taken
+    assert out["genres"] == ["Electronic"]
+
+
+def test_discogs_lookup_without_creds(monkeypatch):
+    from mgc.metadata import discogs
+
+    # force "no creds" regardless of any .env in the test environment
+    monkeypatch.setattr(discogs, "creds", lambda key=None, secret=None: (None, None))
+    out = discogs.lookup("A", "B", get=lambda url: {"results": []})
+    assert out.get("error") == "no_discogs_creds"
+
+
 def test_save_get_identity_roundtrip(tmp_path):
     from mgc.store import Store
     from mgc.types import Track

@@ -574,8 +574,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             try:
                 with app.state.lock:
                     res = eng().identify_all(progress=lambda d, t: p.update(done=d, total=t))
-                if res.get("error") == "no_acoustid_key":
-                    p["error"] = "Set MGC_ACOUSTID_KEY (free key at acoustid.org/new-application)"
+                if res.get("error") == "no_identify_source":
+                    p["error"] = "Add ACOUSTID_API_KEY and/or DISCOGS_KEY+DISCOGS_SECRET to app/.env"
             except Exception as ex:
                 p["error"] = str(ex)
             p["running"] = False

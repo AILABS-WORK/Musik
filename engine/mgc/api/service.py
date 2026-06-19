@@ -386,20 +386,28 @@ class Engine:
         return mb_lookup(artist, title)
 
     def identify_all(self, key: Optional[str] = None, force: bool = False,
-                     progress: Optional[Callable] = None, limit: Optional[int] = None) -> dict:
-        """Recognise every track by its audio fingerprint (AcoustID) and store the
-        authoritative MusicBrainz genre/artist/title/region. Resumable (skips already
-        identified) and best-effort (a miss leaves the track for the AudioSet fallback).
-        Needs a free AcoustID key (``MGC_ACOUSTID_KEY`` or ``key``)."""
+                     progress: Optional[Callable] = None, limit: Optional[int] = None,
+                     use_discogs: bool = True) -> dict:
+        """Recognise each track and store an authoritative genre/artist/title/region.
+
+        Two sources, best of both: (1) AcoustID audio fingerprint -> MusicBrainz (exact,
+        but only covers released music); (2) Discogs search on the parsed artist/title
+        (its 'styles' are the DJ-grade subgenres, and it covers underground/label
+        releases far better). Resumable, best-effort: a miss leaves the track for the
+        AudioSet fallback in auto_organize."""
         import os
 
-        from mgc.metadata import acoustid as aid, mb_lookup_by_mbid
+        from mgc.metadata import acoustid as aid, discogs, mb_lookup_by_mbid
+        from mgc.metadata.parse import parse_artist_title
 
         if self.config.fpcalc_path:
             os.environ["MGC_FPCALC"] = self.config.fpcalc_path
-        k = aid.api_key(key or self.config.acoustid_key)
-        if not k:
-            return {"error": "no_acoustid_key", "identified": 0, "total": 0}
+        acoustid_key = aid.api_key(key or self.config.acoustid_key)
+        dk, ds = discogs.creds()
+        have_discogs = use_discogs and bool(dk and ds)
+        if not acoustid_key and not have_discogs:
+            return {"error": "no_identify_source", "identified": 0, "total": 0}
+
         tracks = self.store.iter_tracks()
         if limit:
             tracks = tracks[:limit]
@@ -407,19 +415,37 @@ class Engine:
         for i, t in enumerate(tracks):
             if not force and self.store.has_identity(t.id):
                 identified += 1
-            else:
-                res = aid.identify(t.path, key=k)
+                if progress:
+                    progress(i + 1, len(tracks))
+                continue
+
+            tags = t.existing_tags or {}
+            mbid = artist = title = area = year = None
+            genres: list = []
+            score = None
+            if acoustid_key:  # 1) fingerprint -> MusicBrainz
+                res = aid.identify(t.path, key=acoustid_key)
                 mbid = res.get("recording_mbid")
                 if mbid:
                     meta = mb_lookup_by_mbid(mbid)
-                    self.store.save_identity(
-                        t.id, recording_mbid=mbid,
-                        artist=meta.get("artist") or res.get("artist"),
-                        title=meta.get("title") or res.get("title"),
-                        genres=meta.get("genres") or [],
-                        area=meta.get("area"), year=meta.get("year"),
-                        score=res.get("score"))
-                    identified += 1
+                    genres = meta.get("genres") or []
+                    artist = meta.get("artist") or res.get("artist")
+                    title = meta.get("title") or res.get("title")
+                    area, year, score = meta.get("area"), meta.get("year"), res.get("score")
+            if not genres and have_discogs:  # 2) Discogs on parsed artist/title
+                pa, pt = parse_artist_title(tags.get("title"), tags.get("artist"), t.path)
+                d = discogs.lookup(pa, pt)
+                dg = (d.get("styles") or []) + (d.get("genres") or [])
+                if dg:
+                    genres = dg
+                    artist, title = artist or pa, title or pt
+                    year = year or d.get("year")
+
+            if genres or mbid:
+                self.store.save_identity(t.id, recording_mbid=mbid, artist=artist,
+                                         title=title, genres=genres, area=area,
+                                         year=year, score=score)
+                identified += 1
             if progress:
                 progress(i + 1, len(tracks))
         return {"identified": identified, "total": len(tracks)}
