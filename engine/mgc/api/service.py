@@ -289,18 +289,75 @@ class Engine:
                 out.setdefault(int(l), []).append(r)
             return list(out.values())
 
-        # Fine sound clusters; each lands in a major folder by its dominant family and
-        # is named by its dominant specific style. Same (major, subgenre) names merge.
-        fine = kmeans_rows(list(range(len(ids))), min(n_groups, len(ids)))
-        majors: dict[str, dict] = {}   # major -> {subgenre name -> [rows]}
-        for frows in fine:
-            maj, sub = vote_names(frows)
-            majors.setdefault(maj, {})
-            sname = sub or f"{maj} {len(majors[maj]) + 1}"
-            majors[maj].setdefault(sname, []).extend(frows)
+        pos = {t: i for i, t in enumerate(ids)}
+
+        # Electronic families. In a predominantly-electronic library we ignore obvious
+        # namesake hits (a techno track that Discogs matched to a "Country" artist),
+        # which would otherwise create nonsense folders and mis-file tracks.
+        ELECTRONIC = {"Techno", "House", "Trance", "Disco", "Dubstep", "Drum And Bass",
+                      "Ambient", "Trip Hop", "Breakbeat", "Garage", "Downtempo", "Hardcore"}
+        fam = Counter(major_of(g) for tid in ids for g in track_genres.get(tid, []))
+        fam_total = sum(fam.values())
+        elec_lib = bool(fam_total) and sum(
+            c for m, c in fam.items() if m in ELECTRONIC) >= 0.6 * fam_total
+
+        def own_label(tid):
+            """(major, specific subgenre | None) from a track's OWN genres."""
+            broad = None
+            for g in track_genres.get(tid, []):
+                m, s = major_of(g), clean(g)
+                if elec_lib and m not in ELECTRONIC:
+                    continue  # drop a namesake non-electronic match
+                if broad is None:
+                    broad = m
+                if s != m:
+                    return m, s          # first specific style wins
+            return broad, None
+
+        # 1) Place each track by its OWN identity (not the cluster's vote). Tracks with a
+        #    specific style become anchors; broad-only/unidentified get filled in below.
+        place: dict[int, tuple] = {}
+        anchors: list[int] = []
+        for tid in ids:
+            maj, sub = own_label(tid)
+            if maj:
+                place[tid] = (maj, sub)
+                if sub:
+                    anchors.append(tid)
+
+        if anchors:
+            # 2) Similarity fill: every track without its own specific style inherits the
+            #    nearest specific-labeled track (preferring a neighbour in its own major).
+            amat = np.stack([mat[pos[t]] for t in anchors])
+            amat = amat / (np.linalg.norm(amat, axis=1, keepdims=True) + 1e-9)
+            for tid in ids:
+                if tid in place and place[tid][1]:
+                    continue
+                v = mat[pos[tid]]
+                v = v / (np.linalg.norm(v) + 1e-9)
+                order = np.argsort(-(amat @ v))
+                cur_major = place.get(tid, (None, None))[0]
+                chosen = None
+                if cur_major:
+                    for j in order:
+                        if place[anchors[j]][0] == cur_major:
+                            chosen = place[anchors[j]]
+                            break
+                place[tid] = chosen or place[anchors[order[0]]]
+            grouping: dict[str, dict] = {}
+            for tid, (maj, sub) in place.items():
+                grouping.setdefault(maj, {}).setdefault(sub or maj, []).append(pos[tid])
+        else:
+            # 3) No identities anywhere -> name fine sound clusters by AudioSet vote.
+            grouping = {}
+            for frows in kmeans_rows(list(range(len(ids))), min(n_groups, len(ids))):
+                maj, sub = vote_names(frows)
+                grouping.setdefault(maj, {})
+                sname = sub or f"{maj} {len(grouping[maj]) + 1}"
+                grouping[maj].setdefault(sname, []).extend(frows)
 
         tree = []
-        for maj, subs in majors.items():
+        for maj, subs in grouping.items():
             parent_id = self.store.upsert_genre(
                 GenreNode(name=maj, level=LEVEL_GENRE, source="custom"))
             subs_out, size = [], 0
@@ -309,7 +366,7 @@ class Engine:
                     GenreNode(name=sname, parent_id=parent_id,
                               level=LEVEL_SUBGENRE, source="custom"))
                 for r in rows:
-                    self.store.set_assignment(ids[r], sub_id, 0.5, "cluster", status="suggested")
+                    self.store.set_assignment(ids[r], sub_id, 0.5, "identity", status="suggested")
                 subs_out.append({"name": sname, "size": len(rows)})
                 size += len(rows)
             tree.append({"major": maj, "size": size, "subgenres": subs_out})
