@@ -63,12 +63,25 @@ export function PlayerBar({ audioRef, trackId, trackName, onSimilarSound }: Play
     ctx.clearRect(0, 0, w, h);
     const n = wave.bass.length;
     const bw = w / n;
+    // peak total energy for normalisation, so the loudest part fills the height
+    let peak = 1e-6;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, wave.bass[i] + wave.mid[i] + wave.high[i]);
+    const BASS = "rgb(235,70,70)", MID = "rgb(80,205,95)", HIGH = "rgb(80,150,235)";
+    const mid = h / 2;
     for (let i = 0; i < n; i++) {
       const b = wave.bass[i], m = wave.mid[i], hi = wave.high[i];
-      const amp = Math.max(b, m, hi);
-      const bh = Math.max(1, amp * h);
-      ctx.fillStyle = `rgb(${Math.round(40 + b * 215)},${Math.round(30 + m * 200)},${Math.round(50 + hi * 205)})`;
-      ctx.fillRect(i * bw, (h - bh) / 2, Math.max(1, bw - 0.3), bh);
+      const tot = b + m + hi;
+      if (tot <= 0) continue;
+      const barH = (tot / peak) * h;                  // total height = loudness
+      const x = i * bw, bwp = Math.max(1, bw - 0.3);
+      // stack bass(red)/mid(green)/high(blue) by their share, mirrored around centre
+      let y = mid + barH / 2;
+      for (const [val, col] of [[b, BASS], [m, MID], [hi, HIGH]] as [number, string][]) {
+        const seg = (val / tot) * barH;
+        ctx.fillStyle = col;
+        ctx.fillRect(x, y - seg, bwp, seg);
+        y -= seg;
+      }
     }
   }, [wave, showWave]);
 
