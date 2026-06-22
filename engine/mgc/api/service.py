@@ -429,6 +429,10 @@ class Engine:
         ids, mat = self.store.load_spectral()
         if track_id not in ids or mat.size == 0:
             return []
+        # Mean-centre first: every track in an electronic library shares the same
+        # bass-heavy shape (cosine ~0.99 to everything), so similarity must key on the
+        # DEVIATION from the library-average profile (extra sub-bass, brighter highs, ...).
+        mat = mat - mat.mean(axis=0, keepdims=True)
         mat = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9)
         sims = mat @ mat[ids.index(track_id)]
         out = []
