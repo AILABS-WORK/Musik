@@ -123,4 +123,13 @@ export const api = {
   seedTaxonomy: (refs_dir: string) => req<{ seeded: number }>("POST", "/api/seed-taxonomy", { refs_dir }),
 
   audioUrl: (id: number) => `${BASE}/api/audio/${id}`,
+  /** RGB spectral waveform: bass/mid/high energy over time. */
+  waveform: (id: number, bins = 480) =>
+    req<{ bass: number[]; mid: number[]; high: number[] }>("GET", `/api/waveform/${id}?bins=${bins}`),
+  /** Tracks with a similar frequency fingerprint (bassline/brightness). */
+  spectralSimilar: (id: number, n = 20) =>
+    req<{ matches: { track_id: number; name: string; score: number }[] }>(
+      "GET", `/api/spectral-similar/${id}?n=${n}`),
+  /** Build the per-track frequency fingerprints (background). */
+  spectralIndex: () => req<{ started: boolean }>("POST", "/api/spectral/index"),
 };

@@ -406,6 +406,24 @@ class Store:
         ).fetchone()
         return row is not None
 
+    # ---- spectral (frequency fingerprint) ---------------------------------
+    def save_spectral(self, track_id: int, profile: list) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO spectral(track_id, profile) VALUES(?,?)",
+            (track_id, json.dumps(profile)))
+        self.conn.commit()
+
+    def has_spectral(self, track_id: int) -> bool:
+        return self.conn.execute("SELECT 1 FROM spectral WHERE track_id=?",
+                                 (track_id,)).fetchone() is not None
+
+    def load_spectral(self):
+        """Return (ids, matrix) of all stored spectral profiles."""
+        rows = self.conn.execute("SELECT track_id, profile FROM spectral ORDER BY track_id").fetchall()
+        ids = [r["track_id"] for r in rows]
+        mat = np.array([json.loads(r["profile"]) for r in rows], dtype=np.float32) if rows else np.zeros((0, 0), np.float32)
+        return ids, mat
+
     # ---- AcoustID/MusicBrainz identity ------------------------------------
     def save_identity(self, track_id: int, recording_mbid=None, artist=None, title=None,
                       genres=None, area=None, year=None, score=None) -> None:

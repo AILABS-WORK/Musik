@@ -364,6 +364,22 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             raise HTTPException(404, "track not found")
         return FileResponse(t.path)
 
+    @app.get("/api/waveform/{track_id}")
+    def waveform(track_id: int, bins: int = 480):
+        """RGB spectral waveform: bass/mid/high energy over time for the player bar."""
+        with app.state.lock:
+            t = eng().store.get_track(track_id)
+        if t is None or not os.path.exists(t.path):
+            raise HTTPException(404, "track not found")
+        from mgc.analysis.waveform import spectral_waveform  # CPU work, outside the lock
+        return spectral_waveform(t.path, bins=bins)
+
+    @app.get("/api/spectral-similar/{track_id}")
+    def spectral_similar(track_id: int, n: int = 20):
+        """Tracks with the most similar frequency fingerprint (bassline/brightness)."""
+        with app.state.lock:
+            return {"matches": eng().spectral_similar(track_id, n=n)}
+
     # ---- genres ------------------------------------------------------------
     @app.get("/api/genres")
     def genres():
@@ -587,6 +603,28 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def identify_all_ep():
         """Recognise tracks by audio fingerprint (AcoustID) -> MusicBrainz genre (background)."""
         return {"started": start_identifying()}
+
+    def start_spectral() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="indexing frequencies…", error=None)
+            try:
+                with app.state.lock:
+                    eng().index_spectral(progress=lambda d, t: p.update(done=d, total=t))
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/spectral/index")
+    def spectral_index_ep():
+        """Compute per-track frequency fingerprints for spectral-similarity search (background)."""
+        return {"started": start_spectral()}
 
     @app.post("/api/search")
     def search_ep(body: SearchIn):

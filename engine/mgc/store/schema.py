@@ -102,6 +102,14 @@ CREATE TABLE IF NOT EXISTS understanding (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+-- Per-track frequency fingerprint (L2-normalised log-band energies): a timbral
+-- vector for "find tracks with a similar bassline / brightness" search.
+CREATE TABLE IF NOT EXISTS spectral (
+    track_id   INTEGER PRIMARY KEY,
+    profile    TEXT NOT NULL,         -- JSON list of band energies
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+
 -- AcoustID/MusicBrainz identity: the track recognised by its audio fingerprint,
 -- giving authoritative artist/title/genre/region regardless of messy filenames.
 CREATE TABLE IF NOT EXISTS identity (

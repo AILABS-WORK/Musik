@@ -20,6 +20,7 @@ import { SetBuilder } from "./components/SetBuilder";
 import { IdentifyPanel } from "./components/IdentifyPanel";
 import { MixPanel } from "./components/MixPanel";
 import { SelectionBar } from "./components/SelectionBar";
+import { PlayerBar } from "./components/PlayerBar";
 import { EmptyState } from "./components/EmptyState";
 import { JobBanner } from "./components/JobBanner";
 import type { JobKind } from "./components/JobBanner";
@@ -50,6 +51,7 @@ export default function App() {
   const [genres, setGenres] = useState<Genre[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [playingId, setPlayingId] = useState<number | null>(null);
 
   const [similar, setSimilar] = useState<SimilarItem[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
@@ -526,6 +528,28 @@ export default function App() {
     setSearchMeta(null);
   }, []);
 
+  // ---- find tracks with a similar frequency fingerprint (bass/mids/highs) ----
+  const handleSimilarSound = useCallback(async (id: number) => {
+    report("finding tracks with a similar frequency profile…");
+    try {
+      const r = await api.spectralSimilar(id);
+      if (!r.matches.length) {
+        report("building the frequency index — press ‘similar sound’ again in ~1 min");
+        await api.spectralIndex();
+        return;
+      }
+      setSearchResults(r.matches.map((m) => ({ track_id: m.track_id, score: m.score })));
+      setSearchMeta({
+        method: "spectral",
+        matched_label: "similar frequency profile (bass/mids/highs)",
+      });
+      setView("table");
+      report(`similar sound · ${r.matches.length} result(s)`);
+    } catch (e) {
+      report(`similar sound failed: ${errMsg(e)}`, true);
+    }
+  }, [report]);
+
   // ---- one-click auto pipeline: embed → analyze → suggest ----
   const waitForProgress = useCallback(async () => {
     // Poll until the background job reports !running.
@@ -658,6 +682,7 @@ export default function App() {
       try {
         el.src = api.audioUrl(id);
         void el.play();
+        setPlayingId(id);
         report(`playing track ${id}`);
       } catch (e) {
         report(`play failed: ${errMsg(e)}`, true);
@@ -928,6 +953,14 @@ export default function App() {
           )}
         </SidePanel>
       </div>
+
+      {/* bottom transport: RGB spectral waveform + playhead + similar-sound */}
+      <PlayerBar
+        audioRef={audioRef}
+        trackId={playingId}
+        trackName={tracks.find((t) => t.id === playingId)?.name ?? null}
+        onSimilarSound={handleSimilarSound}
+      />
 
       <SelectionBar
         count={checked.size}

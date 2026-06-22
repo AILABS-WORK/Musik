@@ -403,6 +403,46 @@ class Engine:
         from mgc.analysis import analyze_all
         return analyze_all(self.store, progress=progress)
 
+    def index_spectral(self, force: bool = False, progress=None) -> int:
+        """Compute + store each track's frequency fingerprint (resumable, best-effort)."""
+        from mgc.analysis.waveform import spectral_profile
+        tracks = self.store.iter_tracks()
+        n = 0
+        for i, t in enumerate(tracks):
+            if force or not self.store.has_spectral(t.id):
+                try:
+                    prof = spectral_profile(t.path)
+                    if prof:
+                        self.store.save_spectral(t.id, prof)
+                        n += 1
+                except Exception:
+                    pass
+            if progress:
+                progress(i + 1, len(tracks))
+        return n
+
+    def spectral_similar(self, track_id: int, n: int = 20) -> list:
+        """Tracks with the most similar frequency fingerprint (bassline/brightness)."""
+        import os as _os
+
+        import numpy as np
+        ids, mat = self.store.load_spectral()
+        if track_id not in ids or mat.size == 0:
+            return []
+        mat = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9)
+        sims = mat @ mat[ids.index(track_id)]
+        out = []
+        for j in np.argsort(-sims):
+            if ids[j] == track_id:
+                continue
+            tk = self.store.get_track(ids[j])
+            out.append({"track_id": ids[j],
+                        "name": _os.path.basename(tk.path) if tk else str(ids[j]),
+                        "score": round(float(sims[j]), 3)})
+            if len(out) >= n:
+                break
+        return out
+
     def build_set(self, description: str, length: Optional[int] = None) -> dict:
         from mgc.setbuilder.builder import build_set
         return build_set(self.store, description, self.model, length=length)
