@@ -21,16 +21,17 @@ from mgc.understanding.moods import MOOD_ANCHORS
 _LOW_WORDS = (
     "slow", "chill", "chilled", "deep", "minimal", "downtempo", "mellow",
     "ambient", "calm", "soft", "relaxed", "laid back", "laid-back", "warm up",
-    "warm-up", "warmup", "intro",
+    "warm-up", "warmup", "intro", "light", "lighter", "sunset", "easy",
+    "gentle", "light beginning", "light begining",
 )
 _MID_WORDS = (
     "groovy", "groove", "rolling", "steady", "mid", "midtempo", "mid-tempo",
-    "bouncy", "hypnotic", "driving",
+    "bouncy", "hypnotic", "driving", "dancy", "dance", "danceable",
 )
 _HIGH_WORDS = (
-    "punchy", "peak", "peak time", "peak-time", "energetic", "energy", "build",
-    "building", "speed up", "speed-up", "harder", "hard", "banging", "banger",
-    "intense", "powerful", "uplifting", "climax", "fast",
+    "punchy", "peak", "peak time", "peak-time", "energetic", "energy",
+    "banging", "banger", "intense", "powerful", "uplifting", "climax", "fast",
+    "more dancy", "late night", "peak-hour", "harder",
 )
 
 # Phrasing that implies a falling tail at the end of the set.
@@ -43,6 +44,8 @@ _FALL_WORDS = (
 _RISE_WORDS = (
     "build", "speed up", "speed-up", "harder", "ramp up", "ramp-up",
     "rise", "lift", "go harder", "build up", "build-up", "then build",
+    "gradually", "more dancy", "gets more", "into night", "into the night",
+    "more dance", "building", "getting", "then dancy", "progressively",
 )
 
 _LOW_E = 0.2

@@ -36,6 +36,8 @@ class Config:
     # AcoustID identification (real genre names from the audio fingerprint).
     acoustid_key: Optional[str] = None      # free key: acoustid.org/new-application
     fpcalc_path: Optional[str] = None       # path to the Chromaprint fpcalc binary
+    # Local LLM (Ollama) for set-building / naming reasoning. None = auto-pick.
+    llm_model: Optional[str] = None
 
     extensions: tuple = field(default_factory=lambda: SUPPORTED_EXTS)
 

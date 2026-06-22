@@ -351,11 +351,14 @@ class Engine:
         # 1) Place each track by its OWN identity (not the cluster's vote). Tracks with a
         #    specific style become anchors; broad-only/unidentified get filled in below.
         place: dict[int, tuple] = {}
+        conf: dict[int, float] = {}   # real per-track confidence (not a flat 0.5)
         anchors: list[int] = []
         for tid in ids:
             maj, sub = own_label(tid)
             if maj:
                 place[tid] = (maj, sub)
+                # your label = certain; an identified specific style = high; broad-only = medium
+                conf[tid] = 1.0 if tid in user_label else (0.85 if sub else 0.6)
                 if sub:
                     anchors.append(tid)
 
@@ -374,7 +377,8 @@ class Engine:
                 sims = amat @ Z[pos[tid]]
                 order = np.argsort(-sims)
                 cur_major = place.get(tid, (None, None))[0]
-                if float(sims[order[0]]) >= min_similarity:
+                best_sim = float(sims[order[0]])
+                if best_sim >= min_similarity:
                     chosen = None
                     if cur_major:  # prefer a confident neighbour in the track's own major
                         for j in order:
@@ -386,6 +390,8 @@ class Engine:
                     place[tid] = chosen or place[anchors[order[0]]]
                 else:  # not confidently similar to anything -> major only, no fake subgenre
                     place[tid] = (cur_major or place[anchors[order[0]]][0], None)
+                # similarity IS the confidence for filled tracks (0..1)
+                conf[tid] = round(max(0.0, best_sim), 3)
             grouping: dict[str, dict] = {}
             for tid, (maj, sub) in place.items():
                 sname = sub or f"{maj} - Unsorted"
@@ -409,7 +415,8 @@ class Engine:
                     GenreNode(name=sname, parent_id=parent_id,
                               level=LEVEL_SUBGENRE, source="custom"))
                 for r in rows:
-                    self.store.set_assignment(ids[r], sub_id, 0.5, "identity", status="suggested")
+                    self.store.set_assignment(ids[r], sub_id, conf.get(ids[r], 0.5),
+                                              "identity", status="suggested")
                 subs_out.append({"name": sname, "size": len(rows)})
                 size += len(rows)
             tree.append({"major": maj, "size": size, "subgenres": subs_out})
@@ -477,9 +484,95 @@ class Engine:
                 break
         return out
 
+    def _set_candidates(self) -> list:
+        """Compact per-track table for the LLM: id, name, bpm, Camelot key, energy, genre."""
+        from mgc.setbuilder.builder import _to_camelot, _camelot_label
+        analysis = self.store.load_analysis()
+        # current assigned genre name per track
+        genre_of = {}
+        for row in self.store.iter_assignments():
+            if row["genre_id"]:
+                g = self.store.get_genre(row["genre_id"])
+                if g:
+                    genre_of[row["track_id"]] = g.name
+        out = []
+        for t in self.store.iter_tracks():
+            a = analysis.get(t.id) or {}
+            out.append({
+                "id": t.id,
+                "name": (t.existing_tags or {}).get("title") or t.path.split("\\")[-1],
+                "bpm": a.get("bpm"),
+                "key": _camelot_label(_to_camelot(a.get("music_key"))) or None,
+                "energy": a.get("energy"),
+                "genre": genre_of.get(t.id),
+            })
+        return out
+
+    def _set_pool(self, cands: list, parsed: dict, want: int, cap: int = 80) -> list:
+        """A focused, diverse candidate pool small enough for the LLM to reason over.
+
+        Bias to the requested genres when that leaves enough tracks, then cap by
+        sampling evenly across the energy range so the full arc is still reachable.
+        """
+        genres = [g.lower() for g in (parsed.get("genres") or [])]
+        if genres:
+            filt = [c for c in cands if c.get("genre")
+                    and any(g in c["genre"].lower() for g in genres)]
+            if len(filt) >= max(2 * want, 16):
+                cands = filt
+        if len(cands) <= cap:
+            return cands
+        cands = sorted(cands, key=lambda c: c.get("energy") or 0.5)
+        step = (len(cands) - 1) / (cap - 1)
+        idx = sorted({round(i * step) for i in range(cap)})
+        return [cands[i] for i in idx]
+
     def build_set(self, description: str, length: Optional[int] = None) -> dict:
-        from mgc.setbuilder.builder import build_set
-        return build_set(self.store, description, self.model, length=length)
+        """LLM-reasoned set ordering (local Ollama) with the heuristic as fallback."""
+        import re
+
+        from mgc.setbuilder.builder import build_set, parse_description
+
+        parsed = parse_description(description)
+        # duration in minutes -> a track count (avg track length), if the user gave a time
+        minutes = None
+        m = re.search(r"(\d+(?:\.\d+)?)\s*(hours?|hrs?|h\b)", description.lower())
+        if m:
+            minutes = int(float(m.group(1)) * 60)
+        else:
+            m = re.search(r"(\d{2,3})\s*(?:min|minutes?|mins)", description.lower())
+            if m:
+                minutes = int(m.group(1))
+        target_len = length or parsed.get("length")
+        if target_len is None and minutes:
+            durs = [t.duration for t in self.store.iter_tracks() if t.duration]
+            avg = (sum(durs) / len(durs) / 60.0) if durs else 5.5
+            target_len = max(1, round(minutes / max(1.0, avg)))
+        target_len = int(target_len or 12)
+
+        # 1) LLM path (MuQ-grounded metadata, LLM reasons the order)
+        try:
+            from mgc.llm import ollama
+            from mgc.llm.setbuild import llm_build_set
+            if ollama.available():
+                cands = self._set_candidates()
+                pool = self._set_pool(cands, parsed, target_len)
+                res = llm_build_set(description, pool, target_len, minutes=minutes,
+                                    model=self.config.llm_model)
+                if res and res["track_ids"]:
+                    analysis = self.store.load_analysis()
+                    names = {c["id"]: c["name"] for c in cands}
+                    arc = [float((analysis.get(tid) or {}).get("energy") or 0.5)
+                           for tid in res["track_ids"]]
+                    return {"track_ids": res["track_ids"],
+                            "names": [names.get(t, str(t)) for t in res["track_ids"]],
+                            "arc": arc, "reasons": res["reasons"],
+                            "parsed": parsed, "engine": f"llm:{res['model']}"}
+        except Exception:
+            pass
+
+        # 2) heuristic fallback
+        return build_set(self.store, description, self.model, length=target_len)
 
     def identify(self, path: str, n: int = 5) -> list:
         from mgc.identify.identify import identify_in_library

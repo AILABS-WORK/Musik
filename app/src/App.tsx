@@ -263,27 +263,29 @@ export default function App() {
       setBusy(true);
       report(`reading ${files.length} file(s)…`);
       try {
-        // Read every File as a base64 data URL. api.upload tolerates the
-        // "data:…;base64," prefix, so we send the readAsDataURL output as-is.
-        const payload = await Promise.all(
-          files.map(
-            (f) =>
-              new Promise<{ name: string; data_base64: string }>(
-                (resolve, reject) => {
-                  const fr = new FileReader();
-                  fr.onload = () =>
-                    resolve({ name: f.name, data_base64: String(fr.result) });
-                  fr.onerror = () =>
-                    reject(fr.error ?? new Error(`read failed: ${f.name}`));
-                  fr.readAsDataURL(f);
-                },
-              ),
-          ),
-        );
-        report(`uploading ${payload.length} file(s)…`);
-        const r = await api.upload(payload);
-        report(`added ${r.added} new track(s) from ${r.files_seen} file(s)`);
-        if (r.embedding) {
+        // Read one File as a base64 data URL (api.upload tolerates the prefix).
+        const readOne = (f: File) =>
+          new Promise<{ name: string; data_base64: string }>((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve({ name: f.name, data_base64: String(fr.result) });
+            fr.onerror = () => reject(fr.error ?? new Error(`read failed: ${f.name}`));
+            fr.readAsDataURL(f);
+          });
+        // Upload in small batches — base64-ing a whole folder into one JSON body
+        // overflows V8's max string length ("Invalid string length").
+        const BATCH = 3;
+        let added = 0, seen = 0, embedding = false;
+        for (let i = 0; i < files.length; i += BATCH) {
+          const slice = files.slice(i, i + BATCH);
+          report(`uploading ${Math.min(i + BATCH, files.length)}/${files.length} file(s)…`);
+          const payload = await Promise.all(slice.map(readOne));
+          const r = await api.upload(payload);
+          added += r.added;
+          seen += r.files_seen;
+          embedding = embedding || r.embedding;
+        }
+        report(`added ${added} new track(s) from ${seen} file(s)`);
+        if (embedding) {
           setJobKind("embed");
           setJobNote(null);
           setProgress({ running: true, done: 0, total: 0, last: "", error: null });
