@@ -319,6 +319,35 @@ class Engine:
         elec_lib = bool(fam_total) and sum(
             c for m, c in fam.items() if m in ELECTRONIC) >= 0.6 * fam_total
 
+        # Plausible BPM range per genre (octave-tolerant). A track whose tempo can't fit
+        # a genre is almost certainly a wrong/namesake match -- e.g. Discogs calling a
+        # 139 BPM hard-techno track "Italo-Disco" -- so we drop that label, which also
+        # stops a bad anchor pulling a whole cluster into the wrong folder.
+        GENRE_BPM = {
+            "italo": (112, 132), "nu disco": (110, 126), "disco": (108, 130),
+            "deep house": (115, 126), "tech house": (120, 130), "acid house": (118, 130),
+            "house": (118, 130), "minimal": (125, 134), "dub techno": (120, 134),
+            "hard techno": (140, 165), "peak time": (138, 150), "techno": (125, 140),
+            "hardcore": (150, 200), "drum and bass": (160, 180), "trance": (130, 145),
+            "dubstep": (135, 150), "speed garage": (130, 140), "uk garage": (128, 138),
+            "garage": (126, 138), "breakbeat": (125, 140), "trip hop": (80, 110),
+            "downtempo": (60, 112), "ambient": (0, 110),
+        }
+        ana = self.store.load_analysis()
+
+        def _bpm(t):
+            v = (ana.get(t) or {}).get("bpm")
+            return float(v) if v else None
+
+        def _bpm_ok(genre: str, bpm) -> bool:
+            if bpm is None:
+                return True
+            g = genre.lower()
+            for kw, (lo, hi) in GENRE_BPM.items():
+                if kw in g:
+                    return any(lo - 4 <= b <= hi + 4 for b in (bpm, bpm / 2, bpm * 2))
+            return True  # unknown genre -> allow
+
         # YOUR labels are ground truth: any track that is an exemplar of a user
         # subgenre (added via "use as examples") becomes that (major, subgenre), which
         # overrides Discogs/AudioSet and seeds the similarity fill. This is the
@@ -337,11 +366,14 @@ class Engine:
             """(major, specific subgenre | None): your label first, then identity."""
             if tid in user_label:
                 return user_label[tid]
+            tb = _bpm(tid)
             broad = None
             for g in track_genres.get(tid, []):
                 m, s = major_of(g), clean(g)
                 if elec_lib and m not in ELECTRONIC:
                     continue  # drop a namesake non-electronic match
+                if not _bpm_ok(g, tb):
+                    continue  # genre implausible for this tempo -> almost certainly wrong
                 if broad is None:
                     broad = m
                 if s != m:
@@ -371,27 +403,31 @@ class Engine:
             #    forced into a wrong subgenre.
             Z = _reduce(mat)  # PCA-reduced + L2-normalised
             amat = np.stack([Z[pos[t]] for t in anchors])
+            # BPM gate: a fill only inherits a subgenre whose anchor tempo is close
+            # (<= 14 BPM) so a 143-BPM hard-techno track can't land in a 125-BPM
+            # Italo-Disco folder just because MuQ thought them "similar".
+            abpm = [_bpm(t) for t in anchors]
             for tid in ids:
                 if tid in place and place[tid][1]:
                     continue  # already has its own specific style
+                tb = _bpm(tid)
                 sims = amat @ Z[pos[tid]]
                 order = np.argsort(-sims)
                 cur_major = place.get(tid, (None, None))[0]
-                best_sim = float(sims[order[0]])
-                if best_sim >= min_similarity:
-                    chosen = None
-                    if cur_major:  # prefer a confident neighbour in the track's own major
-                        for j in order:
-                            if sims[j] < min_similarity:
-                                break
-                            if place[anchors[j]][0] == cur_major:
-                                chosen = place[anchors[j]]
-                                break
-                    place[tid] = chosen or place[anchors[order[0]]]
-                else:  # not confidently similar to anything -> major only, no fake subgenre
+                # confident AND tempo-compatible anchors, best similarity first
+                cand = [j for j in order if sims[j] >= min_similarity
+                        and (tb is None or abpm[j] is None or abs(tb - abpm[j]) <= 14.0)]
+                chosen = None
+                if cand:
+                    same = [j for j in cand if cur_major and place[anchors[j]][0] == cur_major]
+                    j = (same or cand)[0]
+                    chosen = place[anchors[j]]
+                    conf[tid] = round(float(sims[j]), 3)
+                if chosen:
+                    place[tid] = chosen
+                else:  # nothing confident + tempo-compatible -> major only, no fake subgenre
                     place[tid] = (cur_major or place[anchors[order[0]]][0], None)
-                # similarity IS the confidence for filled tracks (0..1)
-                conf[tid] = round(max(0.0, best_sim), 3)
+                    conf[tid] = round(float(sims[order[0]]), 3)
             grouping: dict[str, dict] = {}
             for tid, (maj, sub) in place.items():
                 sname = sub or f"{maj} - Unsorted"
@@ -417,6 +453,15 @@ class Engine:
                 for r in rows:
                     self.store.set_assignment(ids[r], sub_id, conf.get(ids[r], 0.5),
                                               "identity", status="suggested")
+                # Give every auto genre a centroid (mean of its tracks) so Suggest /
+                # Similar / Radio work on them — without it, Suggest finds no centroids
+                # and appears to "wipe" the library.
+                if rows:
+                    cen = mat[rows].mean(axis=0)
+                    nrm = float(np.linalg.norm(cen))
+                    if nrm > 0:
+                        self.store.set_centroid(sub_id, (cen / nrm).astype(np.float32),
+                                                is_text=False)
                 subs_out.append({"name": sname, "size": len(rows)})
                 size += len(rows)
             tree.append({"major": maj, "size": size, "subgenres": subs_out})
