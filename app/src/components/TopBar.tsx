@@ -29,6 +29,7 @@ interface TopBarProps {
   onMbSeed: () => void;
   onSuggest: () => void;
   onAuto: () => void;
+  onResort: () => void;
   /** Live embed progress; null when no embed has run / not running. */
   progress: Progress | null;
   /** Which background job is running, for a plain-language label. */
@@ -50,6 +51,7 @@ export function TopBar({
   onMbSeed,
   onSuggest,
   onAuto,
+  onResort,
   progress,
   jobKind,
   report,
@@ -249,6 +251,14 @@ export function TopBar({
             title="Embed → Analyze → Suggest, all in one"
           >
             Auto-sort
+          </button>
+          <button
+            className="btn"
+            onClick={onResort}
+            disabled={busy || embedRunning}
+            title="Re-sort using your by-example labels (no re-embed). Label tracks via ‘use as examples’, then press this."
+          >
+            Re-sort
           </button>
         </div>
       </div>

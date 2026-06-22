@@ -218,6 +218,20 @@ class Engine:
         mat = np.asarray(mat, dtype=np.float32)
         labels = get_audioset_labels() or []
 
+        # Self-clean so every (re)sort is idempotent: drop the PREVIOUS auto-generated
+        # genres + all assignments, but KEEP your by-example genres (those with
+        # exemplars) so re-sorting builds on your labels instead of duplicating folders.
+        keep = [g.id for g in self.store.iter_genres() if self.store.get_exemplars(g.id)]
+        self.store.conn.execute("DELETE FROM assignments")
+        self.store.conn.execute("DELETE FROM cluster_members")
+        self.store.conn.execute("DELETE FROM clusters")
+        if keep:
+            ph = ",".join("?" * len(keep))
+            self.store.conn.execute(f"DELETE FROM genres WHERE id NOT IN ({ph})", tuple(keep))
+        else:
+            self.store.conn.execute("DELETE FROM genres")
+        self.store.conn.commit()
+
         # AudioSet fallback vocabulary: specific genres only. Umbrella tags ("Electronic
         # music", "Dance music") sit on every track and would collapse the whole library
         # into one folder, so they are excluded.
@@ -305,8 +319,24 @@ class Engine:
         elec_lib = bool(fam_total) and sum(
             c for m, c in fam.items() if m in ELECTRONIC) >= 0.6 * fam_total
 
+        # YOUR labels are ground truth: any track that is an exemplar of a user
+        # subgenre (added via "use as examples") becomes that (major, subgenre), which
+        # overrides Discogs/AudioSet and seeds the similarity fill. This is the
+        # by-example loop: label a few, re-sort, and your labels propagate by sound.
+        user_label: dict[int, tuple] = {}
+        for g in self.store.iter_genres(level=LEVEL_SUBGENRE):
+            ex = self.store.get_exemplars(g.id)
+            if not ex:
+                continue
+            parent = self.store.get_genre(g.parent_id) if g.parent_id else None
+            maj = parent.name if parent else major_of(g.name)
+            for tid in ex:
+                user_label[tid] = (maj, g.name)
+
         def own_label(tid):
-            """(major, specific subgenre | None) from a track's OWN genres."""
+            """(major, specific subgenre | None): your label first, then identity."""
+            if tid in user_label:
+                return user_label[tid]
             broad = None
             for g in track_genres.get(tid, []):
                 m, s = major_of(g), clean(g)

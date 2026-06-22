@@ -624,6 +624,26 @@ export default function App() {
     }
   }, [report, waitForProgress, refreshAll, stopEmbedPoll, flashJobNote]);
 
+  // ---- re-sort using by-example labels (no re-embed; updates genres + assignments) ----
+  const handleResort = useCallback(async () => {
+    report("re-sorting with your labels…");
+    setJobKind("auto");
+    try {
+      const r = await api.autoOrganize(false);
+      await refreshAll();
+      const real = r.tree
+        .flatMap((t) => t.subgenres)
+        .filter((s) => !s.name.includes("Unsorted"))
+        .reduce((a, s) => a + s.size, 0);
+      report(`re-sorted · ${real} in subgenres across ${r.tree.length} genres (your labels propagated)`);
+      flashJobNote("auto", null);
+    } catch (e) {
+      report(`re-sort failed: ${errMsg(e)}`, true);
+    } finally {
+      setJobKind(null);
+    }
+  }, [report, refreshAll, flashJobNote]);
+
   // ---- selection / checks ----
   const toggleCheck = useCallback((id: number) => {
     setChecked((prev) => {
@@ -816,6 +836,7 @@ export default function App() {
         onMbSeed={handleMbSeed}
         onSuggest={handleSuggest}
         onAuto={handleAuto}
+        onResort={handleResort}
       />
 
       <div className="app__body">
