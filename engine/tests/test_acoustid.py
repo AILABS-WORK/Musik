@@ -62,8 +62,12 @@ def test_parse_artist_title_strips_premiere_and_label():
 
     a, t = parse_artist_title("BCCO Premiere: Alexander Johansson & Tim Hök - Sci-Fi Dub [LERICHE03]")
     assert a == "Alexander Johansson & Tim Hök" and t == "Sci-Fi Dub"
+    # country/region tag stripped from the artist (helps matching)
     a, t = parse_artist_title("PREMIERE: Enoch (SA) - Kaya [Label]")
-    assert a == "Enoch (SA)" and t == "Kaya"
+    assert a == "Enoch" and t == "Kaya"
+    # leading vinyl position stripped
+    a, t = parse_artist_title("A1. Livin' Large - The Second Coming [Rise 'n' Shine]")
+    assert a == "Livin' Large" and t == "The Second Coming"
     # label as ID3 artist is rejected in favour of the parsed name
     a, t = parse_artist_title("Reality Check", artist="Mixmag premiere")
     assert a is None and t == "Reality Check"

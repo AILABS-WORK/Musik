@@ -466,17 +466,18 @@ class Engine:
 
     def identify_all(self, key: Optional[str] = None, force: bool = False,
                      progress: Optional[Callable] = None, limit: Optional[int] = None,
-                     use_discogs: bool = True) -> dict:
+                     use_discogs: bool = True, use_musicbrainz: bool = True) -> dict:
         """Recognise each track and store an authoritative genre/artist/title/region.
 
-        Two sources, best of both: (1) AcoustID audio fingerprint -> MusicBrainz (exact,
-        but only covers released music); (2) Discogs search on the parsed artist/title
-        (its 'styles' are the DJ-grade subgenres, and it covers underground/label
-        releases far better). Resumable, best-effort: a miss leaves the track for the
-        AudioSet fallback in auto_organize."""
+        Three sources, best of each, tried in order until one hits: (1) AcoustID audio
+        fingerprint -> MusicBrainz (exact, but only covers released music); (2) Discogs
+        search on the parsed artist/title (its 'styles' are the DJ-grade subgenres, best
+        underground coverage); (3) MusicBrainz text search on the parsed name (broader
+        free text DB, fills Discogs gaps). Resumable, best-effort: a miss leaves the
+        track for the AudioSet fallback in auto_organize."""
         import os
 
-        from mgc.metadata import acoustid as aid, discogs, mb_lookup_by_mbid
+        from mgc.metadata import acoustid as aid, discogs, mb_lookup, mb_lookup_by_mbid
         from mgc.metadata.parse import parse_artist_title
 
         if self.config.fpcalc_path:
@@ -502,7 +503,7 @@ class Engine:
             mbid = artist = title = area = year = None
             genres: list = []
             score = None
-            if acoustid_key:  # 1) fingerprint -> MusicBrainz
+            if acoustid_key:  # 1) fingerprint -> MusicBrainz (exact)
                 res = aid.identify(t.path, key=acoustid_key)
                 mbid = res.get("recording_mbid")
                 if mbid:
@@ -511,14 +512,24 @@ class Engine:
                     artist = meta.get("artist") or res.get("artist")
                     title = meta.get("title") or res.get("title")
                     area, year, score = meta.get("area"), meta.get("year"), res.get("score")
-            if not genres and have_discogs:  # 2) Discogs on parsed artist/title
+            if not genres and (have_discogs or use_musicbrainz):
                 pa, pt = parse_artist_title(tags.get("title"), tags.get("artist"), t.path)
-                d = discogs.lookup(pa, pt)
-                dg = (d.get("styles") or []) + (d.get("genres") or [])
-                if dg:
-                    genres = dg
-                    artist, title = artist or pa, title or pt
-                    year = year or d.get("year")
+                if have_discogs:  # 2) Discogs (best styles for electronic)
+                    d = discogs.lookup(pa, pt)
+                    dg = (d.get("styles") or []) + (d.get("genres") or [])
+                    if dg:
+                        genres = dg
+                        artist, title = artist or pa, title or pt
+                        year = year or d.get("year")
+                if not genres and use_musicbrainz and pa:  # 3) MusicBrainz text search
+                    m = mb_lookup(pa, pt)
+                    mg = m.get("genres") or m.get("tags") or []
+                    if mg:
+                        genres = mg
+                        artist, title = artist or pa, title or (m.get("title") or pt)
+                        area = area or m.get("area")
+                        year = year or m.get("year")
+                        mbid = mbid or m.get("recording_mbid")
 
             if genres or mbid:
                 self.store.save_identity(t.id, recording_mbid=mbid, artist=artist,
