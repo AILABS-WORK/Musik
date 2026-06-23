@@ -29,6 +29,14 @@ interface Region {
 /** How many peak bars to draw across the canvas (kept modest for the ~360px panel). */
 const PEAK_BARS = 720;
 
+/** Spectral lane colours, matching PlayerBar for visual consistency. */
+const BASS_COL = "rgb(235,70,70)";
+const MID_COL = "rgb(80,205,95)";
+const HIGH_COL = "rgb(80,150,235)";
+
+/** Per-band energy timeline (each value 0..1) returned by /api/waveform. */
+type SpectralWave = { bass: number[]; mid: number[]; high: number[] };
+
 /** A single, lazily-created AudioContext shared across every WavePanel mount. */
 let sharedCtx: AudioContext | null = null;
 function getAudioContext(): AudioContext {
@@ -87,6 +95,11 @@ export function WavePanel({ track, report, onChanged }: WavePanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Decoded peak magnitudes for the current track (null while loading/unloaded).
   const peaksRef = useRef<Float32Array | null>(null);
+
+  // ---- multi-lane spectral waveform (composite + bass/mid/high lanes) ----
+  const specCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [spec, setSpec] = useState<SpectralWave | null>(null);
+  const [specLoading, setSpecLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [decodeErr, setDecodeErr] = useState<string | null>(null);
@@ -213,6 +226,148 @@ export function WavePanel({ track, report, onChanged }: WavePanelProps) {
       alive = false;
     };
   }, [track, stopSelPlayback, stopMatchPlayback]);
+
+  // ---- fetch the spectral waveform (bass/mid/high energy over time) ----
+  useEffect(() => {
+    setSpec(null);
+    if (track === null) {
+      setSpecLoading(false);
+      return;
+    }
+    let alive = true;
+    const id = track.id;
+    setSpecLoading(true);
+    api
+      .waveform(id, 1200)
+      .then((w) => {
+        if (!alive) return;
+        setSpec(w);
+        setSpecLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setSpec(null);
+        setSpecLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [track]);
+
+  // ---- draw the multi-lane spectral view (composite + 3 band lanes) ----
+  const drawSpectral = useCallback(() => {
+    const canvas = specCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 1;
+    const cssH = canvas.clientHeight || 1;
+    const wantW = Math.round(cssW * dpr);
+    const wantH = Math.round(cssH * dpr);
+    if (canvas.width !== wantW || canvas.height !== wantH) {
+      canvas.width = wantW;
+      canvas.height = wantH;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.fillStyle = "#0b0d12";
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    if (!spec || spec.bass.length === 0) return;
+
+    const n = spec.bass.length;
+    const bw = cssW / n;
+    const bwp = Math.max(1, bw - 0.3);
+
+    // Vertical layout: one large composite lane, then three thin band lanes.
+    const GAP = 6;
+    const laneH = (cssH - GAP * 3) / 7; // band lane unit
+    const compH = laneH * 4; // composite gets 4 units
+    const bandH = laneH; // each band lane gets 1 unit
+
+    const compMid = compH / 2;
+    const bassTop = compH + GAP;
+    const midTop = bassTop + bandH + GAP;
+    const highTop = midTop + bandH + GAP;
+
+    // Peak total energy across all bins, so the loudest moment fills the height.
+    let peakTot = 1e-6;
+    let peakBass = 1e-6;
+    let peakMid = 1e-6;
+    let peakHigh = 1e-6;
+    for (let i = 0; i < n; i++) {
+      const b = spec.bass[i] as number;
+      const m = spec.mid[i] as number;
+      const h = spec.high[i] as number;
+      if (b + m + h > peakTot) peakTot = b + m + h;
+      if (b > peakBass) peakBass = b;
+      if (m > peakMid) peakMid = m;
+      if (h > peakHigh) peakHigh = h;
+    }
+
+    // --- composite lane: total-energy bar, stacked by band share, mirrored. ---
+    for (let i = 0; i < n; i++) {
+      const b = spec.bass[i] as number;
+      const m = spec.mid[i] as number;
+      const hi = spec.high[i] as number;
+      const tot = b + m + hi;
+      if (tot <= 0) continue;
+      const barH = (tot / peakTot) * (compH - 2);
+      const x = i * bw;
+      let y = compMid + barH / 2;
+      for (const [val, col] of [
+        [b, BASS_COL],
+        [m, MID_COL],
+        [hi, HIGH_COL],
+      ] as [number, string][]) {
+        const seg = (val / tot) * barH;
+        ctx.fillStyle = col;
+        ctx.fillRect(x, y - seg, bwp, seg);
+        y -= seg;
+      }
+    }
+
+    // --- three separate band lanes: each a centred amplitude waveform. ---
+    const lanes: [number[], number, string, number][] = [
+      [spec.bass, bassTop, BASS_COL, peakBass],
+      [spec.mid, midTop, MID_COL, peakMid],
+      [spec.high, highTop, HIGH_COL, peakHigh],
+    ];
+    for (const [band, top, col, peak] of lanes) {
+      const laneMid = top + bandH / 2;
+      // faint centre line
+      ctx.strokeStyle = "rgba(255,255,255,0.05)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, laneMid);
+      ctx.lineTo(cssW, laneMid);
+      ctx.stroke();
+      ctx.fillStyle = col;
+      for (let i = 0; i < n; i++) {
+        const v = band[i] as number;
+        if (v <= 0) continue;
+        const h = (v / peak) * (bandH - 2);
+        const x = i * bw;
+        ctx.fillRect(x, laneMid - h / 2, bwp, Math.max(1, h));
+      }
+    }
+  }, [spec]);
+
+  // Redraw the spectral view whenever its data changes.
+  useEffect(() => {
+    drawSpectral();
+  }, [drawSpectral]);
+
+  // Keep the spectral canvas crisp on container resize.
+  useEffect(() => {
+    const canvas = specCanvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(() => drawSpectral());
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [drawSpectral]);
 
   // ---- draw the waveform + selection + playhead ----
   const draw = useCallback(() => {
@@ -526,6 +681,22 @@ export function WavePanel({ track, report, onChanged }: WavePanelProps) {
         <span className="wave-head__name" title={track.name}>
           {track.name}
         </span>
+      </div>
+
+      <div className="wave-spectral">
+        <div className="wave-spectral__legend">
+          <span className="wave-spectral__chip wave-spectral__chip--bass">bass</span>
+          <span className="wave-spectral__chip wave-spectral__chip--mid">mid</span>
+          <span className="wave-spectral__chip wave-spectral__chip--high">high</span>
+        </div>
+        <div className="wave-spectral-wrap">
+          <canvas ref={specCanvasRef} className="wave-spectral-canvas" />
+          {(specLoading || spec === null) && (
+            <div className="wave-canvas-state">
+              {specLoading ? "Loading spectrum…" : "No spectral waveform"}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="wave-canvas-wrap">
