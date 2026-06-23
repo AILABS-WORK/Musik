@@ -204,7 +204,10 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
       if (existing) {
         await api.confirm({ track_id: track.id, genre_id: existing.id });
       } else {
-        await api.byExample({ name, track_ids: [track.id], level: "subgenre" });
+        // create the subgenre by example, then assign this track to it so the
+        // genre updates immediately (byExample only registers the exemplar).
+        const created = await api.byExample({ name, track_ids: [track.id], level: "subgenre" });
+        await api.confirm({ track_id: track.id, genre_id: created.genre_id });
       }
       setLabelInput("");
       onChanged?.();
