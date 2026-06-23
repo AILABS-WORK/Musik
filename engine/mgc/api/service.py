@@ -792,8 +792,13 @@ class Engine:
         return {"labeled": labeled, "total": len(tracks)}
 
     def llm_genre_one(self, track_id: int) -> dict:
-        """A single-track LLM genre SUGGESTION (unvalidated) for the user to confirm."""
-        from mgc.llm.genre import llm_genre
+        """A single-track LLM genre SUGGESTION (unvalidated) for the user to confirm.
+
+        Tries a web-grounded guess first (search the real track, let the LLM name
+        the subgenre from those snippets) to avoid memory hallucinations; falls
+        back to the ungrounded filename/tags guess if grounding yields nothing."""
+        from mgc.llm.genre import llm_genre, llm_genre_grounded
+        from mgc.metadata.parse import parse_artist_title
         from mgc.tagging import get_audioset_labels, top_tags
         t = self.store.get_track(track_id)
         if not t:
@@ -803,6 +808,12 @@ class Engine:
         tags = ([tg["label"] for tg in top_tags(u["audioset"], labels, k=4)]
                 if u.get("audioset") is not None and labels else [])
         bpm = (self.store.get_analysis(track_id) or {}).get("bpm")
+        id3 = t.existing_tags or {}
+        artist, title = parse_artist_title(id3.get("title"), id3.get("artist"), t.path)
+        grounded = llm_genre_grounded(artist, title, id3.get("artist"), tags, bpm,
+                                      model=self.config.llm_model)
+        if grounded:
+            return grounded
         return llm_genre(t.path, tags, bpm, model=self.config.llm_model, validate=False) or {}
 
     def seed_from_musicbrainz(self, min_examples: int = 3, progress=None) -> dict:

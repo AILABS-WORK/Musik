@@ -60,6 +60,52 @@ def bpm_plausible(genre: str, bpm) -> bool:
     return True
 
 
+_GROUNDED_SYSTEM = (
+    "You are a music genre expert. Using ONLY the provided web search snippets, "
+    "identify the electronic music subgenre of this track. If the snippets don't "
+    "say, output low confidence. Do NOT invent. Output ONLY JSON "
+    "{\"genre\":\"\",\"confidence\":0-1}."
+)
+
+
+def llm_genre_grounded(artist: str | None, title: str | None, label: str | None,
+                       tags: list, bpm, model: str | None = None,
+                       search=None) -> dict | None:
+    """Genre guess grounded on real web snippets instead of the LLM's memory.
+
+    Searches the web for the track, feeds the snippets to the LLM, and asks it to
+    name the subgenre using ONLY those snippets. Returns ``{genre, confidence,
+    plausible, grounded}`` or ``None`` (no snippets / LLM unavailable / parse
+    failure) so the caller can fall back. ``search`` is injectable for tests."""
+    if search is None:
+        from mgc.llm.websearch import search_snippets as search
+    if not ollama.available():
+        return None
+    name = " ".join(p for p in (artist, title) if p).strip()
+    query = f"{name} genre".strip() if name else "music genre"
+    if label:
+        query = f"{query} {label}"
+    snippets = search(query)
+    if not snippets:
+        return None
+    user = ("web search snippets:\n- " + "\n- ".join(snippets) +
+            f"\n\ntags: {', '.join(tags)}\nbpm: {int(bpm) if bpm else '?'}")
+    try:
+        out = ollama.chat(
+            [{"role": "system", "content": _GROUNDED_SYSTEM},
+             {"role": "user", "content": user}],
+            model=model, temperature=0.1, timeout=60)
+        d = json.loads(out)
+    except Exception:
+        return None
+    genre = str(d.get("genre", "")).strip()
+    conf = float(d.get("confidence", 0) or 0)
+    if not genre:
+        return None
+    return {"genre": genre, "confidence": round(conf, 2),
+            "plausible": bpm_plausible(genre, bpm), "grounded": True}
+
+
 def llm_genre(path: str, tags: list, bpm, model: str | None = None,
               min_conf: float = 0.6, validate: bool = True) -> dict | None:
     """LLM genre guess. With ``validate`` (default) returns ``{genre, confidence}`` only
