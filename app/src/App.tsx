@@ -943,6 +943,7 @@ export default function App() {
           {tab === "song" && (
             <SongPanel
               track={tracks.find((t) => t.id === selectedId) ?? null}
+              genres={genres}
               onPlay={play}
               onChanged={refreshAll}
             />

@@ -2461,3 +2461,16 @@ table.tracks tbody tr.selected.is-checked {
   background: var(--panel-2); color: var(--text-dim); font-family: var(--mono);
 }
 .playerbar__toggle:hover { color: var(--text); border-color: var(--border-2); }
+
+/* ===== SongPanel: current genre + "label as" picker ===== */
+.song-curgenre { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.song-curgenre__lab { font-size: 10px; text-transform: uppercase; color: var(--text-faint); letter-spacing: .04em; }
+.song-curgenre__val { font-size: 13px; color: var(--text); font-weight: 600; }
+.song-curgenre__conf { font-size: 11px; color: var(--text-dim); }
+.song-label { display: flex; gap: 6px; margin-top: 8px; }
+.song-label__input {
+  flex: 1 1 auto; padding: 6px 9px; font-size: 12px; color: var(--text);
+  background: var(--panel-2, #1b1f27); border: 1px solid var(--border); border-radius: 6px;
+}
+.song-label__input:focus { outline: none; border-color: #3a86ff; }
+.song-label__hint { margin-top: 5px; font-size: 10.5px; color: var(--text-faint); line-height: 1.4; }

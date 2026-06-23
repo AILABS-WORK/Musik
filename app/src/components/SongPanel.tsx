@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import type { Track } from "../types";
+import type { Genre, Track } from "../types";
 import { api } from "../api";
 import { Meter } from "./Meter";
 
 interface SongPanelProps {
   track: Track | null;
+  /** All genres, for the "label as" picker (datalist of existing subgenres). */
+  genres?: Genre[];
   onPlay: (id: number) => void;
   /** Called after a relabel so the parent (e.g. the track table) can refresh. */
   onChanged?: () => void;
@@ -105,7 +107,7 @@ function MoodPad({ valence, arousal }: { valence: number; arousal: number }) {
   );
 }
 
-export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) {
+export function SongPanel({ track, genres = [], onPlay, onChanged, report }: SongPanelProps) {
   const [u, setU] = useState<Understanding | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -113,6 +115,9 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
   // ---- genre blend (multi-label suggestions, best first) ----
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [relabeling, setRelabeling] = useState<number | null>(null);
+  // ---- "label as" picker (assign to any existing or a brand-new subgenre) ----
+  const [labelInput, setLabelInput] = useState("");
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     if (track === null) {
@@ -185,6 +190,32 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
     }
   };
 
+  // Label the track as a subgenre (existing -> confirm + becomes an exemplar/anchor;
+  // new -> create by example). Either way it anchors the by-example re-sort.
+  const assignLabel = async () => {
+    if (track === null) return;
+    const name = labelInput.trim();
+    if (!name) return;
+    setAssigning(true);
+    try {
+      const existing = genres.find(
+        (g) => g.level === "subgenre" && g.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing) {
+        await api.confirm({ track_id: track.id, genre_id: existing.id });
+      } else {
+        await api.byExample({ name, track_ids: [track.id], level: "subgenre" });
+      }
+      setLabelInput("");
+      onChanged?.();
+      report?.(`labeled “${track.name}” as ${name} — Re-sort to propagate`);
+    } catch (e) {
+      report?.(`label failed: ${e instanceof Error ? e.message : String(e)}`, true);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   if (track === null) {
     return <div className="hint">Select a track to see its sound profile.</div>;
   }
@@ -219,32 +250,31 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
 
   // ---- genre blend: primary chip (rank 0) + clickable alternatives ----
   // Shown near the top so it's always available, regardless of tag state.
-  const genres = (
+  const genreBlock = (
     <div className="song-block">
-      <h3 className="song-block__title">Genres</h3>
-      {suggestions.length > 0 ? (
+      <h3 className="song-block__title">Genre</h3>
+      <div className="song-curgenre">
+        <span className="song-curgenre__lab">now</span>
+        <span className="song-curgenre__val">{track.genre ?? "unsorted"}</span>
+        {track.confidence != null && (
+          <span className="song-curgenre__conf mono">
+            {Math.round(Math.max(0, Math.min(1, track.confidence)) * 100)}%
+          </span>
+        )}
+      </div>
+      {suggestions.length > 0 && (
         <div className="song-chips">
           {suggestions.map((s) => {
             const primary = s.rank === 0;
-            const score = `${Math.round(
-              Math.max(0, Math.min(1, s.confidence)) * 100,
-            )}%`;
+            const score = `${Math.round(Math.max(0, Math.min(1, s.confidence)) * 100)}%`;
             return (
               <button
                 key={s.genre_id}
                 type="button"
-                className={
-                  primary
-                    ? "song-genre song-genre--primary"
-                    : "song-genre song-genre--alt"
-                }
+                className={primary ? "song-genre song-genre--primary" : "song-genre song-genre--alt"}
                 disabled={primary || relabeling !== null}
                 onClick={primary ? undefined : () => void relabel(s.genre_id, s.name)}
-                title={
-                  primary
-                    ? `${s.name} — current genre`
-                    : `Relabel to “${s.name}”`
-                }
+                title={primary ? `${s.name} — current genre` : `Relabel to “${s.name}”`}
               >
                 <span className="song-genre__name">{s.name}</span>
                 <span className="song-genre__score mono">{score}</span>
@@ -252,9 +282,32 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
             );
           })}
         </div>
-      ) : (
-        <div className="hint">Run Suggest to get genre suggestions.</div>
       )}
+      <div className="song-label">
+        <input
+          className="song-label__input"
+          list="song-subgenres"
+          placeholder="label as subgenre…"
+          value={labelInput}
+          onChange={(e) => setLabelInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void assignLabel(); }}
+        />
+        <datalist id="song-subgenres">
+          {genres.filter((g) => g.level === "subgenre").map((g) => (
+            <option key={g.id} value={g.name} />
+          ))}
+        </datalist>
+        <button
+          className="btn btn--xs btn--accent"
+          disabled={assigning || !labelInput.trim()}
+          onClick={() => void assignLabel()}
+        >
+          {assigning ? "…" : "Label"}
+        </button>
+      </div>
+      <div className="song-label__hint">
+        pick an existing subgenre or type a new one — then Re-sort to propagate by sound
+      </div>
     </div>
   );
 
@@ -262,7 +315,7 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
     return (
       <div className="song-card">
         {header}
-        {genres}
+        {genreBlock}
         {tiles}
         <div className="hint">Loading…</div>
       </div>
@@ -278,7 +331,7 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
     return (
       <div className="song-card">
         {header}
-        {genres}
+        {genreBlock}
         {tiles}
         {err !== null ? (
           <div className="hint">Could not load sound profile: {err}</div>
@@ -322,7 +375,7 @@ export function SongPanel({ track, onPlay, onChanged, report }: SongPanelProps) 
         <blockquote className="song-caption">{caption}</blockquote>
       )}
 
-      {genres}
+      {genreBlock}
 
       {tiles}
 
