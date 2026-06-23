@@ -115,8 +115,11 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
   // ---- genre blend (multi-label suggestions, best first) ----
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [relabeling, setRelabeling] = useState<number | null>(null);
-  // ---- "label as" picker (assign to any existing or a brand-new subgenre) ----
-  const [labelInput, setLabelInput] = useState("");
+  // ---- hierarchical genre picker: major -> subgenre, with "create new" ----
+  const [majorSel, setMajorSel] = useState("");   // major genre id, or "__new__"
+  const [subSel, setSubSel] = useState("");       // subgenre id, or "__new__"
+  const [newMajor, setNewMajor] = useState("");
+  const [newSub, setNewSub] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
 
@@ -191,28 +194,35 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
     }
   };
 
-  // Label the track as a subgenre (existing -> confirm + becomes an exemplar/anchor;
-  // new -> create by example). Either way it anchors the by-example re-sort.
-  const assignLabel = async () => {
+  // Apply the picker: resolve the major (existing or create), then the subgenre
+  // (existing -> confirm; new -> create by example under that major), then confirm so
+  // the track updates immediately and becomes a by-example anchor for Re-sort.
+  const applyLabel = async () => {
     if (track === null) return;
-    const name = labelInput.trim();
-    if (!name) return;
     setAssigning(true);
     try {
-      const existing = genres.find(
-        (g) => g.level === "subgenre" && g.name.toLowerCase() === name.toLowerCase(),
-      );
-      if (existing) {
-        await api.confirm({ track_id: track.id, genre_id: existing.id });
+      let parentId: number | null = null;
+      if (majorSel === "__new__") {
+        const mn = newMajor.trim();
+        if (!mn) { report?.("name the major genre", true); return; }
+        const m = genres.find((g) => g.level === "genre" && g.name.toLowerCase() === mn.toLowerCase());
+        parentId = m ? m.id : (await api.addGenre({ name: mn, level: "genre" })).genre_id;
+      } else if (majorSel) {
+        parentId = Number(majorSel);
+      }
+      if (subSel && subSel !== "__new__") {
+        await api.confirm({ track_id: track.id, genre_id: Number(subSel) });
       } else {
-        // create the subgenre by example, then assign this track to it so the
-        // genre updates immediately (byExample only registers the exemplar).
-        const created = await api.byExample({ name, track_ids: [track.id], level: "subgenre" });
+        const sn = newSub.trim();
+        if (!sn) { report?.("pick or name a subgenre", true); return; }
+        const created = await api.byExample({
+          name: sn, track_ids: [track.id], parent_id: parentId, level: "subgenre",
+        });
         await api.confirm({ track_id: track.id, genre_id: created.genre_id });
       }
-      setLabelInput("");
+      setSubSel(""); setNewSub(""); setNewMajor("");
       onChanged?.();
-      report?.(`labeled “${track.name}” as ${name} — Re-sort to propagate`);
+      report?.(`labeled “${track.name}” — Re-sort to propagate by sound`);
     } catch (e) {
       report?.(`label failed: ${e instanceof Error ? e.message : String(e)}`, true);
     } finally {
@@ -220,19 +230,20 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
     }
   };
 
-  // Ask the local LLM for a genre guess (from the label in the filename + tags + BPM)
-  // and pre-fill the input — you review and hit Label to accept. Wrong-looking guesses
-  // (obscure labels) are easy to ignore.
+  // Local-LLM genre guess (from the label in the filename + tags + BPM): pre-fills a
+  // NEW subgenre name for you to confirm. Right where it knows the label, ignorable
+  // where it doesn't (and it flags an implausible BPM).
   const aiGuess = async () => {
     if (track === null) return;
     setAiBusy(true);
     try {
       const g = await api.llmGenre(track.id);
       if (g.genre) {
-        setLabelInput(g.genre);
+        setSubSel("__new__");
+        setNewSub(g.genre);
         const conf = g.confidence != null ? ` (${Math.round(g.confidence * 100)}%)` : "";
         const warn = g.plausible === false ? " — BPM looks off, check it" : "";
-        report?.(`AI guess: ${g.genre}${conf}${warn} — review, then Label`);
+        report?.(`AI guess: ${g.genre}${conf}${warn} — pick a major, then Apply`);
       } else {
         report?.("AI had no confident guess for this one");
       }
@@ -246,6 +257,14 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
   if (track === null) {
     return <div className="hint">Select a track to see its sound profile.</div>;
   }
+
+  // genre picker options: major genres, and the subgenres under the chosen major
+  // (or all subgenres when no major is chosen, so any can be picked quickly).
+  const majors = genres.filter((g) => g.level === "genre");
+  const subsForMajor =
+    majorSel && majorSel !== "__new__"
+      ? genres.filter((g) => g.level === "subgenre" && g.parent_id === Number(majorSel))
+      : genres.filter((g) => g.level === "subgenre");
 
   const bpm = num(track.bpm);
   const energy = num(track.energy);
@@ -310,38 +329,60 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
           })}
         </div>
       )}
-      <div className="song-label">
-        <input
-          className="song-label__input"
-          list="song-subgenres"
-          placeholder="label as subgenre…"
-          value={labelInput}
-          onChange={(e) => setLabelInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void assignLabel(); }}
-        />
-        <datalist id="song-subgenres">
-          {genres.filter((g) => g.level === "subgenre").map((g) => (
-            <option key={g.id} value={g.name} />
-          ))}
-        </datalist>
+      <div className="song-pick">
+        <select
+          className="song-pick__sel"
+          value={majorSel}
+          onChange={(e) => { setMajorSel(e.target.value); setSubSel(""); }}
+        >
+          <option value="">major…</option>
+          {majors.map((m) => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
+          <option value="__new__">➕ new major…</option>
+        </select>
+        <select
+          className="song-pick__sel"
+          value={subSel}
+          onChange={(e) => setSubSel(e.target.value)}
+        >
+          <option value="">subgenre…</option>
+          {subsForMajor.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+          <option value="__new__">➕ new subgenre…</option>
+        </select>
         <button
           className="btn btn--xs"
           disabled={aiBusy}
           onClick={() => void aiGuess()}
           title="Local-LLM genre guess from the label/tags/BPM — review before applying"
         >
-          {aiBusy ? "…" : "AI guess"}
-        </button>
-        <button
-          className="btn btn--xs btn--accent"
-          disabled={assigning || !labelInput.trim()}
-          onClick={() => void assignLabel()}
-        >
-          {assigning ? "…" : "Label"}
+          {aiBusy ? "…" : "AI"}
         </button>
       </div>
-      <div className="song-label__hint">
-        pick an existing subgenre or type a new one — then Re-sort to propagate by sound
+      {majorSel === "__new__" && (
+        <input
+          className="song-label__input"
+          placeholder="new major genre (e.g. Techno)"
+          value={newMajor}
+          onChange={(e) => setNewMajor(e.target.value)}
+        />
+      )}
+      {subSel === "__new__" && (
+        <input
+          className="song-label__input"
+          placeholder="new subgenre (e.g. Dub Techno)"
+          value={newSub}
+          onChange={(e) => setNewSub(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void applyLabel(); }}
+        />
+      )}
+      <div className="song-pick">
+        <button
+          className="btn btn--xs btn--accent song-pick__apply"
+          disabled={assigning || (!subSel && !newSub.trim())}
+          onClick={() => void applyLabel()}
+        >
+          {assigning ? "…" : "Apply label"}
+        </button>
+        <span className="song-label__hint">then Re-sort to propagate by sound</span>
       </div>
     </div>
   );
