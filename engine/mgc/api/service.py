@@ -752,6 +752,59 @@ class Engine:
                 progress(i + 1, len(tracks))
         return {"identified": identified, "total": len(tracks)}
 
+    def llm_classify_all(self, force: bool = False, progress=None, limit=None) -> dict:
+        """Fill UN-identified tracks with a validated LLM genre guess (from the label in
+        the filename + sound tags + BPM). Only confident, BPM-plausible guesses are kept,
+        and existing Discogs/MB identities are preserved (unless ``force``). These become
+        anchors for the next Re-sort. Best-effort; needs Ollama."""
+        from mgc.llm import ollama
+        from mgc.llm.genre import llm_genre
+        from mgc.tagging import get_audioset_labels, top_tags
+
+        if not ollama.available():
+            return {"error": "no_ollama", "labeled": 0, "total": 0}
+        labels = get_audioset_labels() or []
+        ana = self.store.load_analysis()
+        tracks = self.store.iter_tracks()
+        if limit:
+            tracks = tracks[:limit]
+        labeled = 0
+        for i, t in enumerate(tracks):
+            idn = self.store.get_identity(t.id)
+            if idn and idn.get("genres") and not force:
+                if progress:
+                    progress(i + 1, len(tracks))
+                continue
+            u = self.store.get_understanding(t.id) or {}
+            tags = ([tg["label"] for tg in top_tags(u["audioset"], labels, k=4)]
+                    if u.get("audioset") is not None and labels else [])
+            bpm = (ana.get(t.id) or {}).get("bpm")
+            res = llm_genre(t.path, tags, bpm, model=self.config.llm_model)
+            if res:
+                self.store.save_identity(
+                    t.id, recording_mbid=(idn or {}).get("recording_mbid"),
+                    artist=(idn or {}).get("artist"), title=(idn or {}).get("title"),
+                    genres=[res["genre"]], area=(idn or {}).get("area"),
+                    year=(idn or {}).get("year"), score=res["confidence"])
+                labeled += 1
+            if progress:
+                progress(i + 1, len(tracks))
+        return {"labeled": labeled, "total": len(tracks)}
+
+    def llm_genre_one(self, track_id: int) -> dict:
+        """A single-track LLM genre SUGGESTION (unvalidated) for the user to confirm."""
+        from mgc.llm.genre import llm_genre
+        from mgc.tagging import get_audioset_labels, top_tags
+        t = self.store.get_track(track_id)
+        if not t:
+            return {}
+        u = self.store.get_understanding(track_id) or {}
+        labels = get_audioset_labels() or []
+        tags = ([tg["label"] for tg in top_tags(u["audioset"], labels, k=4)]
+                if u.get("audioset") is not None and labels else [])
+        bpm = (self.store.get_analysis(track_id) or {}).get("bpm")
+        return llm_genre(t.path, tags, bpm, model=self.config.llm_model, validate=False) or {}
+
     def seed_from_musicbrainz(self, min_examples: int = 3, progress=None) -> dict:
         from mgc.metadata import seed_genres_from_mb
         return seed_genres_from_mb(self.store, self.classify_model,

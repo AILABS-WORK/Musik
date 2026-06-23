@@ -118,6 +118,7 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
   // ---- "label as" picker (assign to any existing or a brand-new subgenre) ----
   const [labelInput, setLabelInput] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     if (track === null) {
@@ -219,6 +220,29 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
     }
   };
 
+  // Ask the local LLM for a genre guess (from the label in the filename + tags + BPM)
+  // and pre-fill the input — you review and hit Label to accept. Wrong-looking guesses
+  // (obscure labels) are easy to ignore.
+  const aiGuess = async () => {
+    if (track === null) return;
+    setAiBusy(true);
+    try {
+      const g = await api.llmGenre(track.id);
+      if (g.genre) {
+        setLabelInput(g.genre);
+        const conf = g.confidence != null ? ` (${Math.round(g.confidence * 100)}%)` : "";
+        const warn = g.plausible === false ? " — BPM looks off, check it" : "";
+        report?.(`AI guess: ${g.genre}${conf}${warn} — review, then Label`);
+      } else {
+        report?.("AI had no confident guess for this one");
+      }
+    } catch (e) {
+      report?.(`AI guess failed: ${e instanceof Error ? e.message : String(e)}`, true);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   if (track === null) {
     return <div className="hint">Select a track to see its sound profile.</div>;
   }
@@ -300,6 +324,14 @@ export function SongPanel({ track, genres = [], onPlay, onChanged, report }: Son
             <option key={g.id} value={g.name} />
           ))}
         </datalist>
+        <button
+          className="btn btn--xs"
+          disabled={aiBusy}
+          onClick={() => void aiGuess()}
+          title="Local-LLM genre guess from the label/tags/BPM — review before applying"
+        >
+          {aiBusy ? "…" : "AI guess"}
+        </button>
         <button
           className="btn btn--xs btn--accent"
           disabled={assigning || !labelInput.trim()}

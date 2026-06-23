@@ -132,4 +132,7 @@ export const api = {
       "GET", `/api/spectral-similar/${id}?n=${n}`),
   /** Build the per-track frequency fingerprints (background). */
   spectralIndex: () => req<{ started: boolean }>("POST", "/api/spectral/index"),
+  /** Local-LLM genre suggestion for one track (from its label/tags/BPM); confirm to apply. */
+  llmGenre: (id: number) =>
+    req<{ genre?: string; confidence?: number; plausible?: boolean }>("GET", `/api/llm-genre/${id}`),
 };

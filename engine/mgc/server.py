@@ -637,6 +637,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         with app.state.lock:
             return eng().understanding(track_id) or {"track_id": track_id, "top_tags": []}
 
+    @app.get("/api/llm-genre/{track_id}")
+    def llm_genre_ep(track_id: int):
+        """A local-LLM genre SUGGESTION for one track (from its label/tags/BPM)."""
+        with app.state.lock:
+            return eng().llm_genre_one(track_id)
+
     # ---- deep pass (stem separation + sung-language ID) --------------------
     def start_deep() -> bool:
         if app.state.progress["running"]:
