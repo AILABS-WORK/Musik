@@ -136,16 +136,29 @@ class SegmentGenreIn(BaseModel):
 
 def _track_dict(engine: Engine, t) -> dict:
     row = engine.store.get_assignment(t.id)
-    genre_name, confidence, status = None, None, None
+    genre_name, major_name, sub_name, confidence, status = None, None, None, None, None
     if row is not None and row["genre_id"] is not None:
         g = engine.store.get_genre(row["genre_id"])
-        genre_name = g.name if g else None
+        if g is not None:
+            # Surface BOTH the major and the subgenre. When the assigned genre is a
+            # subgenre, walk up to its parent so the major shows too (was: only the
+            # subgenre appeared). `genre` is the combined "Major / Sub" label for the
+            # table; `major`/`subgenre` are separate so the UI can sort/filter by each.
+            if g.parent_id is not None:
+                parent = engine.store.get_genre(g.parent_id)
+                major_name = parent.name if parent else None
+                sub_name = g.name
+                genre_name = f"{major_name} / {sub_name}" if major_name else g.name
+            else:
+                major_name = g.name
+                genre_name = g.name
         confidence = row["confidence"]
         status = row["status"]
     a = engine.store.get_analysis(t.id)
     return {
         "id": t.id, "name": Path(t.path).name, "path": t.path, "fmt": t.fmt,
-        "duration": t.duration, "genre": genre_name, "confidence": confidence,
+        "duration": t.duration, "genre": genre_name,
+        "major": major_name, "subgenre": sub_name, "confidence": confidence,
         "assignment_status": status, "status": t.status,
         "bpm": a["bpm"] if a else None,
         "music_key": a["music_key"] if a else None,
@@ -450,12 +463,18 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             pts = []
             for i, tid in enumerate(ids):
                 row = eng().store.get_assignment(tid)
-                gname = None
+                gname, major = None, None
                 if row is not None and row["genre_id"] is not None:
                     g = eng().store.get_genre(row["genre_id"])
-                    gname = g.name if g else None
+                    if g is not None:
+                        gname = g.name
+                        if g.parent_id is not None:
+                            parent = eng().store.get_genre(g.parent_id)
+                            major = parent.name if parent else g.name
+                        else:
+                            major = g.name
                 pts.append({"track_id": tid, "x": float(coords[i][0]),
-                            "y": float(coords[i][1]), "genre": gname})
+                            "y": float(coords[i][1]), "genre": gname, "major": major})
             return {"points": pts}
 
     # ---- output actions ----------------------------------------------------

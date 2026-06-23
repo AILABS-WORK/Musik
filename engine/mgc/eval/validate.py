@@ -42,10 +42,15 @@ def project_embeddings(
     if n == 0:
         return list(ids), np.zeros((0, n_components), dtype=np.float32)
 
-    # Can't ask for more components than samples or features.
-    k = max(1, min(n_components, n, mat.shape[1]))
+    # Build the feature the map is laid out from. Raw MuQ alone groups only by
+    # overall timbre, so genres overlap; we fuse in the per-track frequency-band
+    # profile (sub..air balance) standardised so it actually shapes the layout.
+    feat = _fused_features(store, ids, mat)
 
-    coords = _reduce(mat.astype(np.float64), method, k)
+    # Can't ask for more components than samples or features.
+    k = max(1, min(n_components, n, feat.shape[1]))
+
+    coords = _reduce(feat, method, k)
 
     # Pad to the requested width if we were forced to use fewer components.
     if coords.shape[1] < n_components:
@@ -53,6 +58,48 @@ def project_embeddings(
         coords = np.hstack([coords, pad])
 
     return list(ids), coords.astype(np.float32)
+
+
+def _standardize(m: np.ndarray) -> np.ndarray:
+    """Z-score each column (zero mean, unit std), guarding zero-variance cols."""
+    mu = m.mean(axis=0, keepdims=True)
+    sd = m.std(axis=0, keepdims=True)
+    sd[sd < 1e-8] = 1.0
+    return (m - mu) / sd
+
+
+def _fused_features(store, ids, mat: np.ndarray, spectral_weight: float = 1.6) -> np.ndarray:
+    """Feature matrix for the similarity map: the sound embedding (pre-reduced so its
+    ~1024 dims don't drown everything) fused with the standardised frequency-band
+    profile, so the layout reflects BOTH timbre and low/mid/high balance. Falls back
+    to the plain embedding if no spectral profiles are stored or anything goes wrong."""
+    emb = mat.astype(np.float64)
+    # row-normalise so loudness doesn't dominate, then pre-reduce the embedding
+    norms = np.linalg.norm(emb, axis=1, keepdims=True)
+    norms[norms < 1e-8] = 1.0
+    emb = emb / norms
+    if emb.shape[1] > 40 and emb.shape[0] > 2:
+        try:
+            emb = _pca(emb, min(40, emb.shape[0], emb.shape[1]))
+        except Exception:
+            pass
+    parts = [_standardize(emb)]
+    try:
+        sids, smat = store.load_spectral()
+        if smat.size and smat.shape[1] > 0:
+            idx = {tid: i for i, tid in enumerate(sids)}
+            aligned = np.zeros((len(ids), smat.shape[1]), dtype=np.float64)
+            have = False
+            for r, tid in enumerate(ids):
+                j = idx.get(tid)
+                if j is not None:
+                    aligned[r] = smat[j]
+                    have = True
+            if have:
+                parts.append(_standardize(aligned) * spectral_weight)
+    except Exception:
+        pass
+    return np.hstack(parts)
 
 
 def _reduce(mat: np.ndarray, method: str, k: int) -> np.ndarray:

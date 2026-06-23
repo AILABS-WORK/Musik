@@ -15,6 +15,7 @@ interface ProjPoint {
   x: number;
   y: number;
   genre: string | null;
+  major: string | null;
 }
 
 interface PlacedPoint extends ProjPoint {
@@ -77,13 +78,15 @@ function toProjPoint(raw: unknown): ProjPoint | null {
     return null;
   }
   const genre = typeof r.genre === "string" ? r.genre : null;
-  return { track_id: id, x, y, genre };
+  const major = typeof r.major === "string" ? r.major : null;
+  return { track_id: id, x, y, genre, major };
 }
 
 const PAD = 28;
 
 export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
   const [method, setMethod] = useState<ProjMethod>("pca");
+  const [colorBy, setColorBy] = useState<"major" | "genre">("major");
   const [points, setPoints] = useState<ProjPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,26 +163,27 @@ export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
       ...p,
       px: PAD + ((p.x - minX) / spanX) * innerW,
       py: PAD + (1 - (p.y - minY) / spanY) * innerH,
-      color: colorForGenre(p.genre),
+      color: colorForGenre(colorBy === "major" ? p.major : p.genre),
       name: nameById.get(p.track_id) ?? `#${p.track_id}`,
     }));
-  }, [points, size, nameById]);
+  }, [points, size, nameById, colorBy]);
 
-  // Legend: unique genres in encounter order, plus "unknown" if any null.
+  // Legend: unique color-key (major or subgenre) in encounter order, + "unknown".
   const legend = useMemo(() => {
     const seen = new Map<string, string>();
     let hasNull = false;
     for (const p of points) {
-      if (p.genre === null || p.genre === "") {
+      const key = colorBy === "major" ? p.major : p.genre;
+      if (key === null || key === "") {
         hasNull = true;
-      } else if (!seen.has(p.genre)) {
-        seen.set(p.genre, colorForGenre(p.genre));
+      } else if (!seen.has(key)) {
+        seen.set(key, colorForGenre(key));
       }
     }
     const out = Array.from(seen, ([name, color]) => ({ name, color }));
     if (hasNull) out.push({ name: "unknown", color: NULL_COLOR });
     return out;
-  }, [points]);
+  }, [points, colorBy]);
 
   return (
     <>
@@ -214,6 +218,22 @@ export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
         >
           {loading ? "Projecting…" : "Recompute"}
         </button>
+        <div className="seg">
+          <button
+            className={colorBy === "major" ? "seg__btn active" : "seg__btn"}
+            onClick={() => setColorBy("major")}
+            title="Colour dots by major genre"
+          >
+            by major
+          </button>
+          <button
+            className={colorBy === "genre" ? "seg__btn active" : "seg__btn"}
+            onClick={() => setColorBy("genre")}
+            title="Colour dots by subgenre"
+          >
+            by sub
+          </button>
+        </div>
         <div className="spacer" />
         <span className="toolbar__counts">
           <strong>{placed.length}</strong> points

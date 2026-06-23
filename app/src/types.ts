@@ -5,6 +5,9 @@ export interface Track {
   fmt: string | null;
   duration: number | null;
   genre: string | null;
+  /** Major genre and subgenre split out (genre is the combined "Major / Sub" label). */
+  major?: string | null;
+  subgenre?: string | null;
   confidence: number | null;
   assignment_status: string | null;
   status: string;
