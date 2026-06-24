@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS spectral (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
+-- Per-band TEMPORAL ("groove") features: how much each frequency range fluctuates over
+-- time. Captures rhythm/dynamics the static spectral profile misses (techno vs house).
+CREATE TABLE IF NOT EXISTS groove (
+    track_id   INTEGER PRIMARY KEY,
+    feat       TEXT NOT NULL,         -- JSON list of temporal features
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
+
 -- AcoustID/MusicBrainz identity: the track recognised by its audio fingerprint,
 -- giving authoritative artist/title/genre/region regardless of messy filenames.
 CREATE TABLE IF NOT EXISTS identity (

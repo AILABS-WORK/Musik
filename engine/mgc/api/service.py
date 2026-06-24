@@ -503,6 +503,24 @@ class Engine:
                 progress(i + 1, len(tracks))
         return n
 
+    def index_groove(self, force: bool = False, progress=None) -> int:
+        """Compute + store each track's per-band temporal (groove) features."""
+        from mgc.analysis.groove import groove_features
+        tracks = self.store.iter_tracks()
+        n = 0
+        for i, t in enumerate(tracks):
+            if force or not self.store.has_groove(t.id):
+                try:
+                    feat = groove_features(t.path)
+                    if feat:
+                        self.store.save_groove(t.id, feat)
+                        n += 1
+                except Exception:
+                    pass
+            if progress:
+                progress(i + 1, len(tracks))
+        return n
+
     def spectral_similar(self, track_id: int, n: int = 20) -> list:
         """Tracks with the most similar frequency fingerprint (bassline/brightness)."""
         import os as _os

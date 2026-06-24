@@ -68,13 +68,30 @@ def _standardize(m: np.ndarray) -> np.ndarray:
     return (m - mu) / sd
 
 
-def _fused_features(store, ids, mat: np.ndarray, spectral_weight: float = 1.6) -> np.ndarray:
+def _align(store_loader, ids) -> "np.ndarray | None":
+    """Load a (sub_ids, matrix) feature and align its rows to ``ids``, or None."""
+    sids, smat = store_loader()
+    if not smat.size or smat.shape[1] == 0:
+        return None
+    idx = {tid: i for i, tid in enumerate(sids)}
+    aligned = np.zeros((len(ids), smat.shape[1]), dtype=np.float64)
+    have = False
+    for r, tid in enumerate(ids):
+        j = idx.get(tid)
+        if j is not None:
+            aligned[r] = smat[j]
+            have = True
+    return aligned if have else None
+
+
+def _fused_features(store, ids, mat: np.ndarray,
+                    spectral_weight: float = 1.4, groove_weight: float = 2.0) -> np.ndarray:
     """Feature matrix for the similarity map: the sound embedding (pre-reduced so its
     ~1024 dims don't drown everything) fused with the standardised frequency-band
-    profile, so the layout reflects BOTH timbre and low/mid/high balance. Falls back
-    to the plain embedding if no spectral profiles are stored or anything goes wrong."""
+    profile (timbre balance) AND the per-band temporal "groove" features (rhythm within
+    each band). Groove is weighted highest because that's what most separates genres
+    (techno vs house) at similar tempo/tone. Falls back to whatever is available."""
     emb = mat.astype(np.float64)
-    # row-normalise so loudness doesn't dominate, then pre-reduce the embedding
     norms = np.linalg.norm(emb, axis=1, keepdims=True)
     norms[norms < 1e-8] = 1.0
     emb = emb / norms
@@ -85,18 +102,16 @@ def _fused_features(store, ids, mat: np.ndarray, spectral_weight: float = 1.6) -
             pass
     parts = [_standardize(emb)]
     try:
-        sids, smat = store.load_spectral()
-        if smat.size and smat.shape[1] > 0:
-            idx = {tid: i for i, tid in enumerate(sids)}
-            aligned = np.zeros((len(ids), smat.shape[1]), dtype=np.float64)
-            have = False
-            for r, tid in enumerate(ids):
-                j = idx.get(tid)
-                if j is not None:
-                    aligned[r] = smat[j]
-                    have = True
-            if have:
-                parts.append(_standardize(aligned) * spectral_weight)
+        sp = _align(store.load_spectral, ids)
+        if sp is not None:
+            parts.append(_standardize(sp) * spectral_weight)
+    except Exception:
+        pass
+    try:
+        if hasattr(store, "load_groove"):
+            gr = _align(store.load_groove, ids)
+            if gr is not None:
+                parts.append(_standardize(gr) * groove_weight)
     except Exception:
         pass
     return np.hstack(parts)

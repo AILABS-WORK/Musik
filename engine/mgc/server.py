@@ -656,6 +656,28 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """Compute per-track frequency fingerprints for spectral-similarity search (background)."""
         return {"started": start_spectral()}
 
+    def start_groove() -> bool:
+        if app.state.progress["running"]:
+            return False
+
+        def worker():
+            p = app.state.progress
+            p.update(running=True, done=0, total=0, last="analysing groove…", error=None)
+            try:
+                with app.state.lock:
+                    eng().index_groove(progress=lambda d, t: p.update(done=d, total=t))
+            except Exception as ex:
+                p["error"] = str(ex)
+            p["running"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @app.post("/api/groove/index")
+    def groove_index_ep():
+        """Compute per-band temporal (groove) features for sharper genre grouping (background)."""
+        return {"started": start_groove()}
+
     @app.post("/api/search")
     def search_ep(body: SearchIn):
         """Open-vocabulary attribute search ('songs with cowbells')."""

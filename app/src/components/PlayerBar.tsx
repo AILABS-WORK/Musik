@@ -131,29 +131,33 @@ export function PlayerBar({ audioRef, trackId, trackName, bpm, onSimilarSound }:
     const i0 = Math.max(0, Math.floor(f0 * N));
     const i1 = Math.min(N, Math.ceil(f1 * N));
     const count = Math.max(1, i1 - i0);
+    // peak = loudest single-band moment, so the loudest part fills the height
     let peak = 1e-6;
-    for (let i = i0; i < i1; i++) peak = Math.max(peak, data.bass[i] + data.mid[i] + data.high[i]);
+    for (let i = i0; i < i1; i++) {
+      peak = Math.max(peak, data.bass[i] ?? 0, data.mid[i] ?? 0, data.high[i] ?? 0);
+    }
     const bw = w / count;
     const cy = h / 2;
+    // Serato/libdjwaveform style: each band is its own mirrored amplitude envelope,
+    // ADDITIVELY blended — bass-heavy = red, hats = blue, loud full-spectrum = white.
+    ctx.globalCompositeOperation = "lighter";
     for (let k = 0; k < count; k++) {
       const i = i0 + k;
-      const b = data.bass[i] ?? 0;
-      const m = data.mid[i] ?? 0;
-      const hi = data.high[i] ?? 0;
-      const tot = b + m + hi;
-      if (tot <= 0) continue;
-      const barH = (tot / peak) * h;
       const x = k * bw;
       const bwp = Math.max(1, bw - 0.3);
-      let y = cy + barH / 2;
-      for (const [val, col] of [[b, BASS], [m, MID], [hi, HIGH]] as [number, string][]) {
-        const seg = (val / tot) * barH;
+      for (const [val, col] of [
+        [data.bass[i] ?? 0, BASS],
+        [data.mid[i] ?? 0, MID],
+        [data.high[i] ?? 0, HIGH],
+      ] as [number, string][]) {
+        if (val <= 0) continue;
+        const bh = Math.min(1, val / peak) * h * 0.94;
         ctx.fillStyle = col;
-        ctx.fillRect(x, y - seg, bwp, seg);
-        y -= seg;
+        ctx.fillRect(x, cy - bh / 2, bwp, bh);
       }
     }
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.fillRect(headX - 1, 0, 2, h);
   }, [full, buf, zoom, pos, showWave, winSec]);
 

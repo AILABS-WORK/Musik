@@ -423,6 +423,24 @@ class Store:
                                  (track_id,)).fetchone()
         return json.loads(row["profile"]) if row else None
 
+    # ---- groove (per-band temporal features) ------------------------------
+    def save_groove(self, track_id: int, feat: list) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO groove(track_id, feat) VALUES(?,?)",
+                          (track_id, json.dumps(feat)))
+        self.conn.commit()
+
+    def has_groove(self, track_id: int) -> bool:
+        return self.conn.execute("SELECT 1 FROM groove WHERE track_id=?",
+                                 (track_id,)).fetchone() is not None
+
+    def load_groove(self):
+        """Return (ids, matrix) of all stored groove feature vectors."""
+        rows = self.conn.execute("SELECT track_id, feat FROM groove ORDER BY track_id").fetchall()
+        ids = [r["track_id"] for r in rows]
+        mat = (np.array([json.loads(r["feat"]) for r in rows], dtype=np.float32)
+               if rows else np.zeros((0, 0), np.float32))
+        return ids, mat
+
     def load_spectral(self):
         """Return (ids, matrix) of all stored spectral profiles."""
         rows = self.conn.execute("SELECT track_id, profile FROM spectral ORDER BY track_id").fetchall()
