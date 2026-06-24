@@ -85,7 +85,7 @@ def _align(store_loader, ids) -> "np.ndarray | None":
 
 
 def _fused_features(store, ids, mat: np.ndarray,
-                    spectral_weight: float = 1.4, groove_weight: float = 2.0) -> np.ndarray:
+                    spectral_weight: float = 0.6, groove_weight: float = 0.8) -> np.ndarray:
     """Feature matrix for the similarity map: the sound embedding (pre-reduced so its
     ~1024 dims don't drown everything) fused with the standardised frequency-band
     profile (timbre balance) AND the per-band temporal "groove" features (rhythm within

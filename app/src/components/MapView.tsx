@@ -85,7 +85,7 @@ function toProjPoint(raw: unknown): ProjPoint | null {
 const PAD = 28;
 
 export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
-  const [method, setMethod] = useState<ProjMethod>("pca");
+  const [method, setMethod] = useState<ProjMethod>("umap");
   const [colorBy, setColorBy] = useState<"major" | "genre">("major");
   const [points, setPoints] = useState<ProjPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,9 +125,9 @@ export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
     [],
   );
 
-  // Initial projection on mount.
+  // Initial projection on mount (UMAP groups far better than linear PCA here).
   useEffect(() => {
-    void recompute("pca");
+    void recompute("umap");
   }, [recompute]);
 
   // Track container size so the SVG fills the viewport.
