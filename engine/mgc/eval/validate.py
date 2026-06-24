@@ -24,6 +24,7 @@ def project_embeddings(
     model: str,
     method: str = "pca",
     n_components: int = 2,
+    fuse: bool = True,
 ) -> tuple[list[int], np.ndarray]:
     """Reduce stored embeddings for ``model`` to ``n_components`` dimensions.
 
@@ -45,7 +46,8 @@ def project_embeddings(
     # Build the feature the map is laid out from. Raw MuQ alone groups only by
     # overall timbre, so genres overlap; we fuse in the per-track frequency-band
     # profile (sub..air balance) standardised so it actually shapes the layout.
-    feat = _fused_features(store, ids, mat)
+    # ``fuse=False`` skips that — used for the already-discriminative 'learned' space.
+    feat = _fused_features(store, ids, mat) if fuse else _standardize(mat.astype(np.float64))
 
     # Can't ask for more components than samples or features.
     k = max(1, min(n_components, n, feat.shape[1]))

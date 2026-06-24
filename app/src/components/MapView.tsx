@@ -87,6 +87,7 @@ const PAD = 28;
 export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
   const [method, setMethod] = useState<ProjMethod>("umap");
   const [colorBy, setColorBy] = useState<"major" | "genre">("major");
+  const [learning, setLearning] = useState(false);
   const [points, setPoints] = useState<ProjPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,27 @@ export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
     },
     [],
   );
+
+  const learn = useCallback(async () => {
+    setLearning(true);
+    try {
+      const r = await api.learnMetric();
+      if (r.error) {
+        setError(
+          r.need
+            ? `Learn: ${r.need} (you have ${r.ready_classes ?? 0} ready). Label more groups in the Clusters tab, then retry.`
+            : `Learn: ${r.error}`,
+        );
+      } else {
+        setError(null);
+        await recompute(method);
+      }
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setLearning(false);
+    }
+  }, [recompute, method]);
 
   // Initial projection on mount (UMAP groups far better than linear PCA here).
   useEffect(() => {
@@ -217,6 +239,14 @@ export function MapView({ tracks, selectedId, onSelect }: MapViewProps) {
           disabled={loading}
         >
           {loading ? "Projecting…" : "Recompute"}
+        </button>
+        <button
+          className="btn btn--xs"
+          onClick={() => void learn()}
+          disabled={loading || learning}
+          title="Learn a genre space from your labels, then re-arrange the map by it"
+        >
+          {learning ? "Learning…" : "Learn from labels"}
         </button>
         <div className="seg">
           <button

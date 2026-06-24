@@ -475,9 +475,70 @@ class Engine:
         from mgc.actions.organize import undo_organize
         return {"tags": undo_tags(self.store), "organize": undo_organize(self.store)}
 
+    def learn_metric(self, min_per_class: int = 5, min_classes: int = 2) -> dict:
+        """Learn a genre-discriminative projection from your CONFIRMED/exemplar labels
+        (shrinkage LDA on the sound embedding) and store it as the 'learned' space, which
+        the map + grouping then use. Unlike auto-naming, this is supervised by YOUR ears,
+        so the more groups you label the sharper everything gets. No-op until there are
+        enough labels (>= min_classes genres with >= min_per_class tracks each)."""
+        import collections
+
+        import numpy as np
+
+        labels: dict[int, int] = {}
+        for r in self.store.conn.execute("SELECT track_id, genre_id FROM exemplars").fetchall():
+            labels[r["track_id"]] = r["genre_id"]
+        for r in self.store.conn.execute(
+                "SELECT track_id, genre_id FROM assignments "
+                "WHERE status='confirmed' AND genre_id IS NOT NULL").fetchall():
+            labels[r["track_id"]] = r["genre_id"]
+        if not labels:
+            return {"error": "no labels yet", "learned": 0}
+
+        def major(gid):
+            g = self.store.get_genre(gid)
+            return None if g is None else (g.parent_id if g.parent_id is not None else g.id)
+
+        X, y = [], []
+        for tid, gid in labels.items():
+            mj = major(gid)
+            emb = self.store.get_embedding(tid, self.model)
+            if mj is not None and emb is not None:
+                X.append(np.asarray(emb, dtype=np.float64))
+                y.append(mj)
+        if not X:
+            return {"error": "no embeddings for labelled tracks", "learned": 0}
+        X = np.array(X)
+        y = np.array(y)
+        keep = {c for c, n in collections.Counter(y).items() if n >= min_per_class}
+        if len(keep) < min_classes:
+            return {"error": "need more labels", "learned": 0,
+                    "ready_classes": len(keep), "labelled_tracks": len(y),
+                    "need": f">= {min_classes} genres with >= {min_per_class} labelled tracks each"}
+        mask = np.array([c in keep for c in y])
+        X, y = X[mask], y[mask]
+        X = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-9)
+
+        from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+        n_comp = max(1, min(len(keep) - 1, 48, X.shape[1]))
+        lda = LinearDiscriminantAnalysis(n_components=n_comp, solver="eigen", shrinkage="auto")
+        lda.fit(X, y)
+
+        ids, mat = self.store.load_matrix(self.model)
+        M = mat.astype(np.float64)
+        M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-9)
+        Z = lda.transform(M)
+        for tid, z in zip(ids, Z):
+            self.store.save_embedding(tid, "learned", z.astype(np.float32))
+        return {"learned": len(ids), "classes": len(keep), "dims": int(Z.shape[1])}
+
     # ---- evaluation ---------------------------------------------------------
     def project(self, method: str = "pca"):
         from mgc.eval.validate import project_embeddings
+        # Prefer the supervised 'learned' space when it exists — it's arranged by YOUR
+        # labels, so same-genre tracks land together (project it directly, no fusion).
+        if self.store.load_matrix("learned")[0]:
+            return project_embeddings(self.store, "learned", method=method, fuse=False)
         return project_embeddings(self.store, self.model, method=method)
 
     # ---- analysis / set-builder / identify / radio -------------------------

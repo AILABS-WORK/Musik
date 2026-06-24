@@ -59,6 +59,10 @@ export const api = {
   cluster: (minSize = 2, nClusters?: number) =>
     req<any[]>("POST", `/api/cluster?min_size=${minSize}${nClusters ? `&n_clusters=${nClusters}` : ""}`),
   project: (method = "pca") => req<{ points: any[] }>("GET", `/api/project?method=${method}`),
+  /** Learn a genre-discriminative space from your labels; map+grouping then use it. */
+  learnMetric: () =>
+    req<{ learned: number; classes?: number; dims?: number; error?: string; need?: string; ready_classes?: number }>(
+      "POST", "/api/learn-metric"),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),

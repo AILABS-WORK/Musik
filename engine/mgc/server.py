@@ -488,6 +488,13 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                             "y": float(coords[i][1]), "genre": gname, "major": major})
             return {"points": pts}
 
+    @app.post("/api/learn-metric")
+    def learn_metric_ep():
+        """Learn a genre-discriminative space from your labels (supervised); the map +
+        grouping then arrange by it. Returns {learned, classes} or a 'need more labels' hint."""
+        with app.state.lock:
+            return eng().learn_metric()
+
     # ---- output actions ----------------------------------------------------
     @app.post("/api/write-tags")
     def write_tags(body: ApplyIn):
