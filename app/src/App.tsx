@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
-import type { Genre, Progress, SimilarItem, Track } from "./types";
+import type { Genre, Progress, Track } from "./types";
 import { api } from "./api";
 import { TopBar } from "./components/TopBar";
 import { TrackTable } from "./components/TrackTable";
@@ -53,8 +53,6 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [playingId, setPlayingId] = useState<number | null>(null);
 
-  const [similar, setSimilar] = useState<SimilarItem[]>([]);
-  const [similarLoading, setSimilarLoading] = useState(false);
 
   const [tab, setTab] = useState<SideTab>("genres");
   const [view, setView] = useState<MainView>("table");
@@ -680,21 +678,8 @@ export default function App() {
 
   const clearChecked = useCallback(() => setChecked(new Set()), []);
 
-  const selectTrack = useCallback(
-    async (id: number) => {
-      setSelectedId(id);
-      setSimilarLoading(true);
-      setSimilar([]);
-      try {
-        setSimilar(await api.similar(id));
-      } catch (e) {
-        report(`similar failed: ${errMsg(e)}`, true);
-      } finally {
-        setSimilarLoading(false);
-      }
-    },
-    [report],
-  );
+  // SimilarPanel fetches its own detailed matches; selecting just sets the id.
+  const selectTrack = useCallback((id: number) => setSelectedId(id), []);
 
   // ---- audio ----
   const play = useCallback(
@@ -934,10 +919,11 @@ export default function App() {
           {tab === "similar" && (
             <SimilarPanel
               selected={selectedTrack}
-              items={similar}
-              loading={similarLoading}
+              genres={genres}
               onPlay={play}
               onRadio={(id) => void handleRadio(id)}
+              report={report}
+              onChanged={refreshAll}
             />
           )}
           {tab === "song" && (

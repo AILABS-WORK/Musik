@@ -398,6 +398,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         from mgc.analysis.waveform import spectral_waveform  # CPU work, outside the lock
         return spectral_waveform(row["path"], bins=bins, start=start, end=end)
 
+    @app.get("/api/similar-detailed/{track_id}")
+    def similar_detailed_ep(track_id: int, n: int = 25):
+        """Similar tracks with an overall score + per-frequency-range breakdown."""
+        with app.state.lock:
+            return {"matches": eng().similar_detailed(track_id, n=n)}
+
     @app.get("/api/spectral-similar/{track_id}")
     def spectral_similar(track_id: int, n: int = 20):
         """Tracks with the most similar frequency fingerprint (bassline/brightness)."""

@@ -50,6 +50,10 @@ export const api = {
     req<{ ok: boolean }>("POST", "/api/confirm", b),
 
   similar: (id: number, n = 12) => req<SimilarItem[]>("GET", `/api/similar/${id}?n=${n}`),
+  /** Similar tracks with an overall score + per-frequency-range breakdown (sub..highs). */
+  similarDetailed: (id: number, n = 25) =>
+    req<{ matches: { track_id: number; name: string; score: number; bands: { name: string; a: number; b: number; match: number }[] }[] }>(
+      "GET", `/api/similar-detailed/${id}?n=${n}`),
   /** Why two tracks are alike: shared vs differing sounds/mood/tempo/key + per-band match. */
   explain: (a: number, b: number) =>
     req<{

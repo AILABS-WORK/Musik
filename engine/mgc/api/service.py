@@ -564,6 +564,53 @@ class Engine:
                 progress(i + 1, len(tracks))
         return n
 
+    def similar_detailed(self, track_id: int, n: int = 25) -> list:
+        """Rich similarity for a track: an OVERALL score plus a per-frequency-range
+        breakdown (sub..highs) for each match. Overall is cosine in a discriminative
+        space — the supervised 'learned' space if you've labelled, otherwise a
+        PCA-reduced embedding (raw MuQ cosines sit ~0.95 to everything, so we reduce
+        them to spread the scores and actually tell tracks apart)."""
+        import os as _os
+
+        import numpy as np
+        from mgc.similarity.bands import band_breakdown
+
+        model = "learned" if self.store.load_matrix("learned")[0] else self.model
+        ids, mat = self.store.load_matrix(model)
+        if track_id not in ids or mat.size == 0:
+            return []
+        M = mat.astype(np.float64)
+        M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-9)
+        if model != "learned" and M.shape[1] > 60:
+            try:
+                from mgc.eval.validate import _pca
+                M = _pca(M, min(40, M.shape[0], M.shape[1]))
+                M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-9)
+            except Exception:
+                pass
+        qi = ids.index(track_id)
+        cos = M @ M[qi]
+
+        sids, smat = self.store.load_spectral()
+        sidx = {tid: i for i, tid in enumerate(sids)}
+        qprof = self.store.get_spectral(track_id)
+
+        out = []
+        for j in np.argsort(-cos):
+            tid = ids[j]
+            if tid == track_id:
+                continue
+            t = self.store.get_track(tid)
+            bands = []
+            if qprof is not None and tid in sidx:
+                bands = band_breakdown(qprof, smat[sidx[tid]].tolist()).get("bands", [])
+            out.append({"track_id": tid,
+                        "name": _os.path.basename(t.path) if t else str(tid),
+                        "score": round(float(cos[j]), 3), "bands": bands})
+            if len(out) >= n:
+                break
+        return out
+
     def index_groove(self, force: bool = False, progress=None) -> int:
         """Compute + store each track's per-band temporal (groove) features."""
         from mgc.analysis.groove import groove_features
