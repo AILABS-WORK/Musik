@@ -8,6 +8,10 @@ interface ClustersPanelProps {
   report: (msg: string, isError?: boolean) => void;
   /** Refresh tracks + genres after a mutation. */
   refresh: () => Promise<void>;
+  /** Audition a track (so a cluster can be verified before bulk-labelling it). */
+  onPlay: (id: number) => void;
+  /** Select a track in the table (to label its parts / inspect). */
+  onSelect?: (id: number) => void;
 }
 
 interface Cluster {
@@ -50,13 +54,13 @@ function toCluster(raw: unknown, index: number): Cluster | null {
   return { id, members };
 }
 
-const PREVIEW = 5;
-
 export function ClustersPanel({
   tracks,
   genres,
   report,
   refresh,
+  onPlay,
+  onSelect,
 }: ClustersPanelProps) {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [finding, setFinding] = useState(false);
@@ -186,8 +190,6 @@ export function ClustersPanel({
         ) : (
           <div className="cluster-list">
             {clusters.map((cluster, i) => {
-              const preview = cluster.members.slice(0, PREVIEW);
-              const extra = cluster.members.length - preview.length;
               const makeKey = `make-${cluster.id}`;
               const assignKey = `assign-${cluster.id}`;
               const rowBusy = busyKey !== null;
@@ -203,18 +205,25 @@ export function ClustersPanel({
                   </div>
 
                   <div className="cluster-card__members">
-                    {preview.map((id) => (
-                      <div
-                        className="cluster-card__member"
-                        key={id}
-                        title={nameById.get(id) ?? `#${id}`}
-                      >
-                        {nameById.get(id) ?? `#${id}`}
+                    {cluster.members.map((id) => (
+                      <div className="cluster-card__member" key={id}>
+                        <button
+                          className="cluster-card__play"
+                          onClick={() => onPlay(id)}
+                          title="Audition this track"
+                          aria-label="Play"
+                        >
+                          ▶
+                        </button>
+                        <span
+                          className="cluster-card__mname"
+                          title={nameById.get(id) ?? `#${id}`}
+                          onClick={() => onSelect?.(id)}
+                        >
+                          {nameById.get(id) ?? `#${id}`}
+                        </span>
                       </div>
                     ))}
-                    {extra > 0 && (
-                      <div className="cluster-card__more">+{extra} more</div>
-                    )}
                   </div>
 
                   <div className="cluster-card__action">

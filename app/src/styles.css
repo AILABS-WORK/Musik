@@ -2505,3 +2505,11 @@ table.tracks tbody tr.selected.is-checked {
   cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px;
 }
 .set-item__rm:hover { color: #fb7185; }
+
+/* ===== ClustersPanel: auditionable member list ===== */
+.cluster-card__members { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow-y: auto; margin: 6px 0; padding-right: 2px; }
+.cluster-card__member { display: flex; align-items: center; gap: 6px; }
+.cluster-card__play { flex: 0 0 auto; border: none; background: transparent; color: var(--accent, #2dd4bf); cursor: pointer; font-size: 10px; line-height: 1; padding: 2px 3px; }
+.cluster-card__play:hover { filter: brightness(1.3); }
+.cluster-card__mname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-dim); cursor: pointer; }
+.cluster-card__mname:hover { color: var(--text); }

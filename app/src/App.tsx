@@ -961,6 +961,8 @@ export default function App() {
               genres={genres}
               report={report}
               refresh={refreshAll}
+              onPlay={play}
+              onSelect={setSelectedId}
             />
           )}
           {tab === "set" && (
