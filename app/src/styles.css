@@ -2491,3 +2491,17 @@ table.tracks tbody tr.selected.is-checked {
 .sim-band__bar { flex: 1 1 auto; height: 7px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
 .sim-band__fill { display: block; height: 100%; border-radius: 4px; transition: width .2s; }
 .sim-band__pct { flex: 0 0 22px; text-align: right; font-size: 10px; color: var(--text-faint); }
+
+/* ===== SetBuilder: drag-to-reorder + remove ===== */
+.set-hint { font-size: 10.5px; color: var(--text-faint); margin: 4px 0 6px; }
+.set-item { cursor: grab; }
+.set-item--drag { opacity: 0.5; }
+.set-item__head { display: flex; align-items: center; gap: 6px; }
+.set-item__grip { color: var(--text-faint); cursor: grab; font-size: 13px; user-select: none; }
+.set-item__pos { flex: 0 0 18px; font-size: 11px; color: var(--text-faint); text-align: right; }
+.set-item__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-item__rm {
+  flex: 0 0 auto; border: none; background: transparent; color: var(--text-faint);
+  cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px;
+}
+.set-item__rm:hover { color: #fb7185; }

@@ -67,6 +67,35 @@ export function SetBuilder({ report, onPlayQueue, onPlay }: SetBuilderProps) {
   const [length, setLength] = useState("");
   const [building, setBuilding] = useState(false);
   const [result, setResult] = useState<SetResult | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  // Manual edits to the built set: drag to reorder, × to remove. The arc is the
+  // planned shape, so we leave it as-is when the order changes.
+  const reorder = (from: number, to: number) => {
+    if (from === to) return;
+    setResult((r) => {
+      if (!r) return r;
+      const move = <T,>(arr: T[]): T[] => {
+        const a = [...arr];
+        const [x] = a.splice(from, 1);
+        a.splice(to, 0, x);
+        return a;
+      };
+      return { ...r, trackIds: move(r.trackIds), names: move(r.names), reasons: move(r.reasons) };
+    });
+  };
+  const removeAt = (i: number) => {
+    setResult((r) =>
+      r
+        ? {
+            ...r,
+            trackIds: r.trackIds.filter((_, j) => j !== i),
+            names: r.names.filter((_, j) => j !== i),
+            reasons: r.reasons.filter((_, j) => j !== i),
+          }
+        : r,
+    );
+  };
 
   const build = async () => {
     const desc = text.trim();
@@ -154,12 +183,27 @@ export function SetBuilder({ report, onPlayQueue, onPlay }: SetBuilderProps) {
             </div>
           )}
 
+          <div className="set-hint">drag ⠿ to reorder · × to remove · then Play set</div>
           <ol className="set-list">
             {result.names.map((name, i) => {
               const id = result.trackIds[i];
               return (
-                <li className="set-item" key={`${id ?? "x"}-${i}`}>
+                <li
+                  className={dragIdx === i ? "set-item set-item--drag" : "set-item"}
+                  key={`${id ?? "x"}-${i}`}
+                  draggable
+                  onDragStart={() => setDragIdx(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragIdx !== null) reorder(dragIdx, i);
+                    setDragIdx(null);
+                  }}
+                  onDragEnd={() => setDragIdx(null)}
+                >
                   <div className="set-item__head">
+                    <span className="set-item__grip" title="Drag to reorder">⠿</span>
+                    <span className="set-item__pos mono">{i + 1}</span>
                     {id !== undefined && (
                       <button
                         className="btn btn--play btn--xs"
@@ -173,6 +217,14 @@ export function SetBuilder({ report, onPlayQueue, onPlay }: SetBuilderProps) {
                     <span className="set-item__name" title={name}>
                       {name}
                     </span>
+                    <button
+                      className="set-item__rm"
+                      onClick={() => removeAt(i)}
+                      title="Remove from set"
+                      aria-label={`Remove ${name}`}
+                    >
+                      ×
+                    </button>
                   </div>
                   {result.reasons[i] && (
                     <div className="set-item__reason">{result.reasons[i]}</div>
