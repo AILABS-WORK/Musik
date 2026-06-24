@@ -31,8 +31,10 @@ class Config:
     # Output: folder organization
     organize_root: Optional[str] = None
     organize_mode: str = "copy"  # copy | move
-    # Output: tags — write the specific subgenre into the single genre field
-    write_parent_to_grouping: bool = False
+    # Output: tags — subgenre -> GENRE tag, major -> GROUPING field. On by default so
+    # the XDJ-1000/rekordbox can filter by BOTH the subgenre (Genre browse) and the
+    # major (Grouping). See https://forums.pioneerdj.com (XDJ reads ID3 genre + grouping).
+    write_parent_to_grouping: bool = True
     # AcoustID identification (real genre names from the audio fingerprint).
     acoustid_key: Optional[str] = None      # free key: acoustid.org/new-application
     fpcalc_path: Optional[str] = None       # path to the Chromaprint fpcalc binary

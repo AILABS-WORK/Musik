@@ -99,5 +99,17 @@ def explain_similarity(store, a_id: int, b_id: int, model: str) -> dict:
         else:
             different.append(f"energy {round(ea * 100)}% vs {round(eb * 100)}%")
 
+    # ---- frequency-range breakdown (where they match: lows / mids / highs) --
+    bands: list = []
+    try:
+        from mgc.similarity.bands import band_breakdown
+        pa = store.get_spectral(a_id) if hasattr(store, "get_spectral") else None
+        pb = store.get_spectral(b_id) if hasattr(store, "get_spectral") else None
+        bb = band_breakdown(pa, pb)
+        bands = bb.get("bands", [])
+    except Exception:
+        bands = []
+
     return {"score": round(score, 3) if score is not None else None,
-            "a": na, "b": nb, "shared": shared, "different": different}
+            "a": na, "b": nb, "shared": shared, "different": different,
+            "bands": bands}

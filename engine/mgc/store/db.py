@@ -417,6 +417,12 @@ class Store:
         return self.conn.execute("SELECT 1 FROM spectral WHERE track_id=?",
                                  (track_id,)).fetchone() is not None
 
+    def get_spectral(self, track_id: int):
+        """The stored 16-band frequency profile for one track, or None."""
+        row = self.conn.execute("SELECT profile FROM spectral WHERE track_id=?",
+                                 (track_id,)).fetchone()
+        return json.loads(row["profile"]) if row else None
+
     def load_spectral(self):
         """Return (ids, matrix) of all stored spectral profiles."""
         rows = self.conn.execute("SELECT track_id, profile FROM spectral ORDER BY track_id").fetchall()

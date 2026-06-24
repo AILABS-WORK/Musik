@@ -50,10 +50,12 @@ export const api = {
     req<{ ok: boolean }>("POST", "/api/confirm", b),
 
   similar: (id: number, n = 12) => req<SimilarItem[]>("GET", `/api/similar/${id}?n=${n}`),
-  /** Why two tracks are alike: shared vs differing sounds/mood/tempo/key. */
+  /** Why two tracks are alike: shared vs differing sounds/mood/tempo/key + per-band match. */
   explain: (a: number, b: number) =>
-    req<{ score: number | null; a: string; b: string; shared: string[]; different: string[] }>(
-      "GET", `/api/explain?a=${a}&b=${b}`),
+    req<{
+      score: number | null; a: string; b: string; shared: string[]; different: string[];
+      bands?: { name: string; a: number; b: number; match: number }[];
+    }>("GET", `/api/explain?a=${a}&b=${b}`),
   cluster: (minSize = 2, nClusters?: number) =>
     req<any[]>("POST", `/api/cluster?min_size=${minSize}${nClusters ? `&n_clusters=${nClusters}` : ""}`),
   project: (method = "pca") => req<{ points: any[] }>("GET", `/api/project?method=${method}`),

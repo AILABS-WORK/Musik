@@ -12,10 +12,18 @@ interface SimilarPanelProps {
   onRadio: (id: number) => void;
 }
 
+interface BandMatch {
+  name: string;
+  a: number;
+  b: number;
+  match: number;
+}
+
 interface Explanation {
   score: number | null;
   shared: string[];
   different: string[];
+  bands: BandMatch[];
 }
 
 export function SimilarPanel({
@@ -48,9 +56,12 @@ export function SimilarPanel({
       setExplain((m) => ({ ...m, [otherId]: "loading" }));
       try {
         const r = await api.explain(sel.id, otherId);
-        setExplain((m) => ({ ...m, [otherId]: { score: r.score, shared: r.shared, different: r.different } }));
+        setExplain((m) => ({
+          ...m,
+          [otherId]: { score: r.score, shared: r.shared, different: r.different, bands: r.bands ?? [] },
+        }));
       } catch {
-        setExplain((m) => ({ ...m, [otherId]: { score: null, shared: [], different: [] } }));
+        setExplain((m) => ({ ...m, [otherId]: { score: null, shared: [], different: [], bands: [] } }));
       }
     }
   };
@@ -103,10 +114,31 @@ export function SimilarPanel({
                   <div className="sim-whybox">
                     {ex === undefined || ex === "loading" ? (
                       <span className="hint">comparing…</span>
-                    ) : ex.shared.length === 0 && ex.different.length === 0 ? (
+                    ) : ex.shared.length === 0 && ex.different.length === 0 && ex.bands.length === 0 ? (
                       <span className="hint">Tag + Analyze both tracks for a detailed comparison.</span>
                     ) : (
                       <>
+                        {ex.bands.length > 0 && (
+                          <div className="sim-bands" title="Where the two tracks match across the frequency spectrum">
+                            {ex.bands.map((bd) => {
+                              const pct = Math.round(bd.match * 100);
+                              // green = matched, red = differs, for this frequency range
+                              const hue = Math.round(bd.match * 130);
+                              return (
+                                <div className="sim-band" key={bd.name}>
+                                  <span className="sim-band__name">{bd.name}</span>
+                                  <span className="sim-band__bar">
+                                    <span
+                                      className="sim-band__fill"
+                                      style={{ width: `${pct}%`, background: `hsl(${hue},70%,50%)` }}
+                                    />
+                                  </span>
+                                  <span className="sim-band__pct mono">{pct}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {ex.shared.length > 0 && (
                           <div className="sim-shares">
                             <span className="sim-tag sim-tag--yes">shares</span>{" "}
