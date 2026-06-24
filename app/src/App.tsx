@@ -983,6 +983,7 @@ export default function App() {
         audioRef={audioRef}
         trackId={playingId}
         trackName={tracks.find((t) => t.id === playingId)?.name ?? null}
+        bpm={tracks.find((t) => t.id === playingId)?.bpm ?? null}
         onSimilarSound={handleSimilarSound}
       />
 

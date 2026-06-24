@@ -378,14 +378,25 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         return FileResponse(t.path)
 
     @app.get("/api/waveform/{track_id}")
-    def waveform(track_id: int, bins: int = 480):
-        """RGB spectral waveform: bass/mid/high energy over time for the player bar."""
-        with app.state.lock:
-            t = eng().store.get_track(track_id)
-        if t is None or not os.path.exists(t.path):
+    def waveform(track_id: int, bins: int = 480,
+                 start: float | None = None, end: float | None = None):
+        """RGB spectral waveform: bass/mid/high energy over time for the player bar.
+        With start/end (seconds) returns a high-res slice for zoom. Reads the path via a
+        throwaway connection so the player keeps working even while a long job holds the
+        main lock."""
+        import sqlite3
+        row = None
+        try:
+            conn = sqlite3.connect(str(app.state.config.db_path))
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT path FROM tracks WHERE id=?", (track_id,)).fetchone()
+            conn.close()
+        except Exception:
+            row = None
+        if row is None or not os.path.exists(row["path"]):
             raise HTTPException(404, "track not found")
         from mgc.analysis.waveform import spectral_waveform  # CPU work, outside the lock
-        return spectral_waveform(t.path, bins=bins)
+        return spectral_waveform(row["path"], bins=bins, start=start, end=end)
 
     @app.get("/api/spectral-similar/{track_id}")
     def spectral_similar(track_id: int, n: int = 20):

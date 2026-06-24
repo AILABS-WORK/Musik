@@ -125,9 +125,15 @@ export const api = {
   seedTaxonomy: (refs_dir: string) => req<{ seeded: number }>("POST", "/api/seed-taxonomy", { refs_dir }),
 
   audioUrl: (id: number) => `${BASE}/api/audio/${id}`,
-  /** RGB spectral waveform: bass/mid/high energy over time. */
-  waveform: (id: number, bins = 480) =>
-    req<{ bass: number[]; mid: number[]; high: number[] }>("GET", `/api/waveform/${id}?bins=${bins}`),
+  /** RGB spectral waveform: bass/mid/high energy over time. With start/end (seconds) a
+   *  high-res slice for zoom; returns the window's start/end. */
+  waveform: (id: number, bins = 480, start?: number, end?: number) =>
+    req<{ bass: number[]; mid: number[]; high: number[]; start: number; end: number }>(
+      "GET",
+      `/api/waveform/${id}?bins=${bins}` +
+        (start != null ? `&start=${start.toFixed(3)}` : "") +
+        (end != null ? `&end=${end.toFixed(3)}` : ""),
+    ),
   /** Tracks with a similar frequency fingerprint (bassline/brightness). */
   spectralSimilar: (id: number, n = 20) =>
     req<{ matches: { track_id: number; name: string; score: number }[] }>(
