@@ -2527,3 +2527,12 @@ table.tracks tbody tr.selected.is-checked {
 .simrow__bands { flex: 0 0 auto; display: inline-flex; gap: 1px; }
 .simrow__band { width: 5px; height: 12px; border-radius: 1px; display: inline-block; }
 .simrow__score { flex: 0 0 26px; text-align: right; font-size: 11px; color: var(--text); font-weight: 600; }
+
+/* ===== TrackTable: genre filter + clickable genre pill ===== */
+.genre-filter {
+  padding: 5px 8px; font-size: 12px; color: var(--text);
+  background: var(--panel-2, #1b1f27); border: 1px solid var(--border); border-radius: 6px; max-width: 200px;
+}
+.genre-filter:focus { outline: none; border-color: #3a86ff; }
+.genre-pill { cursor: pointer; }
+.genre-pill:hover { filter: brightness(1.25); }
