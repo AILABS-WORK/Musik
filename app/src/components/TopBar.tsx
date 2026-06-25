@@ -30,6 +30,8 @@ interface TopBarProps {
   onSuggest: () => void;
   onAuto: () => void;
   onResort: () => void;
+  /** Sort the whole library from the user's labels (supervised propagation). */
+  onSortFromLabels: () => void;
   /** Live embed progress; null when no embed has run / not running. */
   progress: Progress | null;
   /** Which background job is running, for a plain-language label. */
@@ -52,6 +54,7 @@ export function TopBar({
   onSuggest,
   onAuto,
   onResort,
+  onSortFromLabels,
   progress,
   jobKind,
   report,
@@ -259,6 +262,14 @@ export function TopBar({
             title="Re-sort using your by-example labels (no re-embed). Label tracks via ‘use as examples’, then press this."
           >
             Re-sort
+          </button>
+          <button
+            className="btn btn--accent"
+            onClick={onSortFromLabels}
+            disabled={busy || embedRunning}
+            title="Sort the whole library from YOUR labels: learns your subgenre space, then classifies every other track into your nearest subgenre. Your labels stay exact."
+          >
+            Sort from labels
           </button>
         </div>
       </div>

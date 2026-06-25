@@ -67,6 +67,10 @@ export const api = {
   learnMetric: () =>
     req<{ learned: number; classes?: number; dims?: number; error?: string; need?: string; ready_classes?: number }>(
       "POST", "/api/learn-metric"),
+  /** Sort the whole library from your labels (learn subgenre space + classify the rest). */
+  propagateLabels: () =>
+    req<{ assigned: number; classes?: number; labelled?: number; error?: string; need?: string; ready_classes?: number }>(
+      "POST", "/api/propagate-labels"),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),

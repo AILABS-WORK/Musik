@@ -532,6 +532,86 @@ class Engine:
             self.store.save_embedding(tid, "learned", z.astype(np.float32))
         return {"learned": len(ids), "classes": len(keep), "dims": int(Z.shape[1])}
 
+    def propagate_from_labels(self, min_per_class: int = 4) -> dict:
+        """Sort the WHOLE library from YOUR labels: learn a subgenre space (shrinkage
+        LDA) from your exemplars/confirmed tracks, then assign every un-labelled track to
+        its nearest labelled subgenre in that space. Your labels are kept as-is. Genres
+        with the same name are merged into one class (handles accidental duplicates)."""
+        import collections
+
+        import numpy as np
+
+        rows = self.store.conn.execute(
+            "SELECT e.track_id tid, g.id gid, g.name name FROM exemplars e "
+            "JOIN genres g ON g.id=e.genre_id").fetchall()
+        rows2 = self.store.conn.execute(
+            "SELECT a.track_id tid, g.id gid, g.name name FROM assignments a "
+            "JOIN genres g ON g.id=a.genre_id WHERE a.status='confirmed' AND a.genre_id IS NOT NULL").fetchall()
+        lab: dict[int, str] = {}
+        canon: dict[str, collections.Counter] = {}
+        for r in list(rows) + list(rows2):
+            nm = (r["name"] or "").strip().lower()
+            if not nm:
+                continue
+            lab[r["tid"]] = nm
+            canon.setdefault(nm, collections.Counter())[r["gid"]] += 1
+        if not lab:
+            return {"error": "no labels yet", "assigned": 0}
+        cnt = collections.Counter(lab.values())
+        keep = {nm for nm, n in cnt.items() if n >= min_per_class}
+        if len(keep) < 2:
+            return {"error": "need more labels per genre", "assigned": 0,
+                    "ready_classes": len(keep),
+                    "need": f">= 2 genres with >= {min_per_class} labelled tracks"}
+        canon_id = {nm: canon[nm].most_common(1)[0][0] for nm in keep}
+
+        ids, mat = self.store.load_matrix(self.model)
+        idx = {t: i for i, t in enumerate(ids)}
+        M = mat.astype(np.float64)
+        M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-9)
+
+        Xtr, ytr = [], []
+        for tid, nm in lab.items():
+            if nm in keep and tid in idx:
+                Xtr.append(M[idx[tid]])
+                ytr.append(nm)
+        Xtr = np.array(Xtr)
+        ytr = np.array(ytr)
+
+        from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+        n_comp = max(1, min(len(keep) - 1, 48, Xtr.shape[1]))
+        lda = LinearDiscriminantAnalysis(n_components=n_comp, solver="eigen", shrinkage="auto")
+        lda.fit(Xtr, ytr)
+        Z = lda.transform(M)
+        for tid in ids:
+            self.store.save_embedding(tid, "learned", Z[idx[tid]].astype(np.float32))
+
+        Ztr = lda.transform(Xtr)
+        cnames = sorted(keep)
+        C = np.array([Ztr[ytr == nm].mean(axis=0) for nm in cnames])
+        C = C / (np.linalg.norm(C, axis=1, keepdims=True) + 1e-9)
+
+        labeled = set(lab)
+        assigned = 0
+        for tid in ids:
+            if tid in labeled:
+                continue
+            z = Z[idx[tid]]
+            z = z / (np.linalg.norm(z) + 1e-9)
+            sims = C @ z
+            j = int(np.argmax(sims))
+            conf = round(float((sims[j] + 1.0) / 2.0), 3)
+            self.store.set_assignment(tid, canon_id[cnames[j]], conf, "propagate", status="suggested")
+            assigned += 1
+        for nm in keep:
+            try:
+                from mgc.registry.centroids import recompute_centroid
+                recompute_centroid(self.store, canon_id[nm], self.classify_model)
+            except Exception:
+                pass
+        return {"assigned": assigned, "classes": len(keep),
+                "labelled": len(labeled), "learned": len(ids)}
+
     # ---- evaluation ---------------------------------------------------------
     def project(self, method: str = "pca"):
         from mgc.eval.validate import project_embeddings

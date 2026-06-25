@@ -501,6 +501,13 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         with app.state.lock:
             return eng().learn_metric()
 
+    @app.post("/api/propagate-labels")
+    def propagate_labels_ep():
+        """Sort the whole library from YOUR labels (learn subgenre space + classify the
+        rest). Returns {assigned, classes} or a 'need more labels' hint."""
+        with app.state.lock:
+            return eng().propagate_from_labels()
+
     # ---- output actions ----------------------------------------------------
     @app.post("/api/write-tags")
     def write_tags(body: ApplyIn):

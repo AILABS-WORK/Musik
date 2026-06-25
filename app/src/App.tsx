@@ -644,6 +644,30 @@ export default function App() {
     }
   }, [report, refreshAll, flashJobNote]);
 
+  const handleSortFromLabels = useCallback(async () => {
+    report("learning your subgenres + sorting the library…");
+    setJobKind("auto");
+    try {
+      const r = await api.propagateLabels();
+      if (r.error) {
+        report(
+          r.need
+            ? `Sort from labels: ${r.need} (you have ${r.ready_classes ?? 0} ready). Label a few more, then retry.`
+            : `Sort from labels: ${r.error}`,
+          true,
+        );
+      } else {
+        await refreshAll();
+        report(`sorted ${r.assigned} tracks into your ${r.classes} subgenres (your ${r.labelled} labels kept exact)`);
+      }
+      flashJobNote("auto", null);
+    } catch (e) {
+      report(`sort from labels failed: ${errMsg(e)}`, true);
+    } finally {
+      setJobKind(null);
+    }
+  }, [report, refreshAll, flashJobNote]);
+
   // ---- selection / checks ----
   const toggleCheck = useCallback((id: number) => {
     setChecked((prev) => {
@@ -824,6 +848,7 @@ export default function App() {
         onSuggest={handleSuggest}
         onAuto={handleAuto}
         onResort={handleResort}
+        onSortFromLabels={handleSortFromLabels}
       />
 
       <div className="app__body">
