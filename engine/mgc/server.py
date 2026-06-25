@@ -508,6 +508,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         with app.state.lock:
             return eng().propagate_from_labels()
 
+    @app.post("/api/merge-duplicate-genres")
+    def merge_dupes_ep():
+        """Collapse duplicate genres (same name under the same parent) into one."""
+        with app.state.lock:
+            return eng().merge_duplicate_genres()
+
     # ---- output actions ----------------------------------------------------
     @app.post("/api/write-tags")
     def write_tags(body: ApplyIn):

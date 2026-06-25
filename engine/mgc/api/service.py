@@ -612,6 +612,57 @@ class Engine:
         return {"assigned": assigned, "classes": len(keep),
                 "labelled": len(labeled), "learned": len(ids)}
 
+    def merge_duplicate_genres(self) -> dict:
+        """Collapse duplicate genres (same name under the same parent) into one, cascading:
+        when two majors of the same name merge, their children reparent and same-name
+        children then merge too. The kept genre prefers level=genre, then the one with the
+        most labels. Assignments + exemplars are moved over; empties deleted."""
+        conn = self.store.conn
+
+        def norm(s):
+            return (s or "").strip().lower()
+
+        def weight(gid):
+            ex = conn.execute("SELECT count(*) FROM exemplars WHERE genre_id=?", (gid,)).fetchone()[0]
+            asg = conn.execute("SELECT count(*) FROM assignments WHERE genre_id=?", (gid,)).fetchone()[0]
+            ch = conn.execute("SELECT count(*) FROM genres WHERE parent_id=?", (gid,)).fetchone()[0]
+            return (ex, asg + ch)
+
+        def merge_into(keep, drop):
+            conn.execute("UPDATE assignments SET genre_id=? WHERE genre_id=?", (keep, drop))
+            for r in conn.execute("SELECT track_id FROM exemplars WHERE genre_id=?", (drop,)).fetchall():
+                conn.execute("INSERT OR IGNORE INTO exemplars(genre_id, track_id) VALUES(?,?)",
+                             (keep, r["track_id"]))
+            conn.execute("DELETE FROM exemplars WHERE genre_id=?", (drop,))
+            # Reparent children to keep; if a same-name child already exists there, merge
+            # into it (recurse) to respect the UNIQUE(name, parent_id) constraint.
+            for ch in conn.execute("SELECT id, name FROM genres WHERE parent_id=?", (drop,)).fetchall():
+                existing = conn.execute(
+                    "SELECT id FROM genres WHERE parent_id=? AND lower(name)=lower(?) AND id!=?",
+                    (keep, ch["name"], ch["id"])).fetchone()
+                if existing:
+                    merge_into(existing["id"], ch["id"])
+                else:
+                    conn.execute("UPDATE genres SET parent_id=? WHERE id=?", (keep, ch["id"]))
+            conn.execute("DELETE FROM genres WHERE id=?", (drop,))
+
+        merged = 0
+        for _ in range(500):  # iterate until no duplicate (parent, name) remains
+            rows = conn.execute("SELECT id, name, level, parent_id FROM genres").fetchall()
+            groups: dict = {}
+            for r in rows:
+                groups.setdefault((r["parent_id"], norm(r["name"])), []).append(r)
+            dup = next((g for g in groups.values() if len(g) > 1), None)
+            if dup is None:
+                break
+            dup.sort(key=lambda r: (r["level"] == "genre", weight(r["id"])), reverse=True)
+            keep = dup[0]["id"]
+            for r in dup[1:]:
+                merge_into(keep, r["id"])
+                merged += 1
+        conn.commit()
+        return {"merged": merged}
+
     # ---- evaluation ---------------------------------------------------------
     def project(self, method: str = "pca"):
         from mgc.eval.validate import project_embeddings
