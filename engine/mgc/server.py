@@ -14,7 +14,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -513,6 +513,14 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """Collapse duplicate genres (same name under the same parent) into one."""
         with app.state.lock:
             return eng().merge_duplicate_genres()
+
+    @app.post("/api/playlist/folder")
+    def playlist_folder_ep(body: dict = Body(...)):
+        """Copy/move an ordered playlist of tracks into a named folder on disk."""
+        with app.state.lock:
+            return eng().make_playlist_folder(
+                body.get("track_ids", []), body.get("name", "Playlist"),
+                mode=body.get("mode", "copy"))
 
     # ---- output actions ----------------------------------------------------
     @app.post("/api/write-tags")

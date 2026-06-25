@@ -2536,3 +2536,20 @@ table.tracks tbody tr.selected.is-checked {
 .genre-filter:focus { outline: none; border-color: #3a86ff; }
 .genre-pill { cursor: pointer; }
 .genre-pill:hover { filter: brightness(1.25); }
+
+/* ===== PlaylistPanel ===== */
+.pl-drop {
+  border: 1px dashed var(--border); border-radius: 8px; padding: 14px; text-align: center;
+  font-size: 11.5px; color: var(--text-faint); margin: 8px 0;
+}
+.pl-drop--over { border-color: #3a86ff; background: rgba(58,134,255,0.08); color: var(--text-dim); }
+.pl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: 52vh; overflow-y: auto; }
+.pl-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 5px; cursor: grab; }
+.pl-item:hover { background: rgba(255,255,255,0.04); }
+.pl-item--drag { opacity: 0.5; }
+.pl-item__grip { color: var(--text-faint); font-size: 12px; user-select: none; }
+.pl-item__pos { flex: 0 0 20px; text-align: right; font-size: 10px; color: var(--text-faint); }
+.pl-item__name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--text-dim); }
+.pl-item__rm { flex: 0 0 auto; border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 14px; padding: 0 4px; }
+.pl-item__rm:hover { color: #fb7185; }
+.pl-make { display: flex; gap: 6px; margin-top: 8px; align-items: center; }

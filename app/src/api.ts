@@ -73,6 +73,10 @@ export const api = {
       "POST", "/api/propagate-labels"),
   /** Collapse duplicate same-name genres (e.g. two House parents) into one. */
   mergeDuplicateGenres: () => req<{ merged: number }>("POST", "/api/merge-duplicate-genres"),
+  /** Copy/move an ordered playlist of tracks into a named folder on disk. */
+  playlistFolder: (track_ids: number[], name: string, mode: "copy" | "move" = "copy") =>
+    req<{ folder: string; copied: number; errors: string[] }>(
+      "POST", "/api/playlist/folder", { track_ids, name, mode }),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),

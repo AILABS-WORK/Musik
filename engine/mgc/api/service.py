@@ -188,6 +188,33 @@ class Engine:
                                      dry_run=dry_run))
         return plans
 
+    def make_playlist_folder(self, track_ids: list, name: str, mode: str = "copy") -> dict:
+        """Copy (or move) an ordered list of tracks into a named folder, prefixing each
+        file with its position so the playlist order is preserved on disk / the XDJ."""
+        import os
+        import re
+        import shutil
+
+        safe = re.sub(r"[^\w\s\-&()]+", "", name or "").strip() or "Playlist"
+        root = self.config.organize_root or str(Path(self.config.library_root or ".") / "_playlists")
+        dest = os.path.join(root, safe)
+        os.makedirs(dest, exist_ok=True)
+        copied, errors = 0, []
+        for i, tid in enumerate(track_ids):
+            t = self.store.get_track(tid)
+            if t is None or not os.path.exists(t.path):
+                continue
+            out = os.path.join(dest, f"{i + 1:03d} - {os.path.basename(t.path)}")
+            try:
+                if mode == "move":
+                    shutil.move(t.path, out)
+                else:
+                    shutil.copy2(t.path, out)
+                copied += 1
+            except Exception as e:
+                errors.append(str(e))
+        return {"folder": dest, "copied": copied, "errors": errors[:5]}
+
     def organize(self, dry_run: bool = False) -> list[dict]:
         from mgc.actions.organize import plan_organize, execute_organize
         root = self.config.organize_root or str(Path(self.config.library_root or ".") / "_organized")

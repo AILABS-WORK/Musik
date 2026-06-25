@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type SideTab = "genres" | "similar" | "song" | "parts" | "clusters" | "set" | "id" | "mix" | "apply";
+export type SideTab = "genres" | "similar" | "song" | "parts" | "clusters" | "set" | "playlist" | "id" | "mix" | "apply";
 
 interface SidePanelProps {
   active: SideTab;
@@ -22,6 +22,7 @@ const TABS: TabDef[] = [
   { id: "parts", label: "Parts", blurb: "find tracks by a sound in the waveform" },
   { id: "clusters", label: "Clusters", blurb: "group tracks by shared sound" },
   { id: "set", label: "Set", blurb: "build a DJ set from a vibe" },
+  { id: "playlist", label: "Playlist", blurb: "hand-build a playlist + make a folder" },
   { id: "id", label: "ID", blurb: "identify a track by sound" },
   { id: "mix", label: "Mix", blurb: "tracklist a whole mix" },
   { id: "apply", label: "Apply", blurb: "write tags / organize files" },

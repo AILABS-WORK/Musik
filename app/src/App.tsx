@@ -17,6 +17,7 @@ import { StatusBar } from "./components/StatusBar";
 import { AddMusic } from "./components/AddMusic";
 import { SearchBar } from "./components/SearchBar";
 import { SetBuilder } from "./components/SetBuilder";
+import { PlaylistPanel } from "./components/PlaylistPanel";
 import { IdentifyPanel } from "./components/IdentifyPanel";
 import { MixPanel } from "./components/MixPanel";
 import { SelectionBar } from "./components/SelectionBar";
@@ -993,6 +994,15 @@ export default function App() {
               report={report}
               onPlayQueue={playQueue}
               onPlay={play}
+            />
+          )}
+          {tab === "playlist" && (
+            <PlaylistPanel
+              tracks={tracks}
+              checked={checked}
+              onPlay={play}
+              onPlayQueue={playQueue}
+              report={report}
             />
           )}
           {tab === "id" && <IdentifyPanel report={report} onPlay={play} />}
