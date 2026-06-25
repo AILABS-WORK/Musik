@@ -673,22 +673,20 @@ class Engine:
             merge_into(r["pid"], r["cid"])
             merged += 1
 
-        # Pass 3: remove EMPTY leftover duplicates (0 assignments, 0 children) that share a
-        # name with a real genre — the stray top-level orphans (e.g. an empty "Hard Techno"
-        # beside the real one under Techno).
-        rows = conn.execute("SELECT id, name FROM genres").fetchall()
-        byname: dict = {}
-        for r in rows:
-            byname.setdefault(norm(r["name"]), []).append(r["id"])
-        for gids in byname.values():
-            if len(gids) < 2:
-                continue
-            nonempty = [g for g in gids if weight(g) != (0, 0)]
-            if not nonempty:
-                continue
-            canonical = max(nonempty, key=weight)
-            for g in gids:
-                if g != canonical and weight(g) == (0, 0):
+        # Pass 3: any name still appearing twice is a stray duplicate (e.g. a top-level
+        # "Hard Techno" beside the real one under Techno). Merge all of them into the
+        # biggest (most labels/tracks), moving any labels over.
+        for _ in range(200):
+            rows = conn.execute("SELECT id, name FROM genres").fetchall()
+            byname: dict = {}
+            for r in rows:
+                byname.setdefault(norm(r["name"]), []).append(r["id"])
+            dup = next((gids for gids in byname.values() if len(gids) > 1), None)
+            if dup is None:
+                break
+            canonical = max(dup, key=weight)
+            for g in dup:
+                if g != canonical:
                     merge_into(canonical, g)
                     merged += 1
 
