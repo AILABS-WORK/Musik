@@ -647,7 +647,8 @@ class Engine:
             conn.execute("DELETE FROM genres WHERE id=?", (drop,))
 
         merged = 0
-        for _ in range(500):  # iterate until no duplicate (parent, name) remains
+        # Pass 1: merge duplicates with the same (parent, name) — cascades.
+        for _ in range(500):
             rows = conn.execute("SELECT id, name, level, parent_id FROM genres").fetchall()
             groups: dict = {}
             for r in rows:
@@ -660,6 +661,37 @@ class Engine:
             for r in dup[1:]:
                 merge_into(keep, r["id"])
                 merged += 1
+
+        # Pass 2: collapse a genre nested under a same-name parent into the parent
+        # (e.g. an "Instrumental" subgenre under the "Instrumental" major).
+        for _ in range(200):
+            r = conn.execute(
+                "SELECT g.id cid, g.parent_id pid FROM genres g JOIN genres p ON p.id=g.parent_id "
+                "WHERE lower(g.name)=lower(p.name) LIMIT 1").fetchone()
+            if r is None:
+                break
+            merge_into(r["pid"], r["cid"])
+            merged += 1
+
+        # Pass 3: remove EMPTY leftover duplicates (0 assignments, 0 children) that share a
+        # name with a real genre — the stray top-level orphans (e.g. an empty "Hard Techno"
+        # beside the real one under Techno).
+        rows = conn.execute("SELECT id, name FROM genres").fetchall()
+        byname: dict = {}
+        for r in rows:
+            byname.setdefault(norm(r["name"]), []).append(r["id"])
+        for gids in byname.values():
+            if len(gids) < 2:
+                continue
+            nonempty = [g for g in gids if weight(g) != (0, 0)]
+            if not nonempty:
+                continue
+            canonical = max(nonempty, key=weight)
+            for g in gids:
+                if g != canonical and weight(g) == (0, 0):
+                    merge_into(canonical, g)
+                    merged += 1
+
         conn.commit()
         return {"merged": merged}
 
