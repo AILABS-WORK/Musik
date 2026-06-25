@@ -94,7 +94,10 @@ def _write_genre_to_file(
         tags.setall("TCON", [TCON(encoding=3, text=[subgenre])])
         if write_parent_to_grouping and parent:
             tags.setall("TIT1", [TIT1(encoding=3, text=[parent])])
-        tags.save(path)
+        # Save as ID3v2.3 — the version Pioneer/rekordbox reads most reliably (v2.4 genre
+        # frames are sometimes missed). v2_version=3 makes mutagen down-convert encodings.
+        tags.update_to_v23()
+        tags.save(path, v2_version=3)
     elif ext in (".flac", ".ogg", ".oga"):
         if ext == ".flac":
             from mutagen.flac import FLAC
