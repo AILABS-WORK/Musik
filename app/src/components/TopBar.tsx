@@ -32,6 +32,8 @@ interface TopBarProps {
   onResort: () => void;
   /** Sort the whole library from the user's labels (supervised propagation). */
   onSortFromLabels: () => void;
+  /** Collapse duplicate same-name genres into one. */
+  onTidyGenres: () => void;
   /** Live embed progress; null when no embed has run / not running. */
   progress: Progress | null;
   /** Which background job is running, for a plain-language label. */
@@ -55,6 +57,7 @@ export function TopBar({
   onAuto,
   onResort,
   onSortFromLabels,
+  onTidyGenres,
   progress,
   jobKind,
   report,
@@ -270,6 +273,14 @@ export function TopBar({
             title="Sort the whole library from YOUR labels: learns your subgenre space, then classifies every other track into your nearest subgenre. Your labels stay exact."
           >
             Sort from labels
+          </button>
+          <button
+            className="btn"
+            onClick={onTidyGenres}
+            disabled={busy || embedRunning}
+            title="Collapse duplicate same-name genres (e.g. two House parents) into one."
+          >
+            Tidy genres
           </button>
         </div>
       </div>

@@ -668,6 +668,17 @@ export default function App() {
     }
   }, [report, refreshAll, flashJobNote]);
 
+  const handleTidyGenres = useCallback(async () => {
+    report("tidying duplicate genres…");
+    try {
+      const r = await api.mergeDuplicateGenres();
+      await refreshAll();
+      report(r.merged > 0 ? `merged ${r.merged} duplicate genre(s)` : "no duplicate genres found");
+    } catch (e) {
+      report(`tidy failed: ${errMsg(e)}`, true);
+    }
+  }, [report, refreshAll]);
+
   // ---- selection / checks ----
   const toggleCheck = useCallback((id: number) => {
     setChecked((prev) => {
@@ -849,6 +860,7 @@ export default function App() {
         onAuto={handleAuto}
         onResort={handleResort}
         onSortFromLabels={handleSortFromLabels}
+        onTidyGenres={handleTidyGenres}
       />
 
       <div className="app__body">

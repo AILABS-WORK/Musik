@@ -71,6 +71,8 @@ export const api = {
   propagateLabels: () =>
     req<{ assigned: number; classes?: number; labelled?: number; error?: string; need?: string; ready_classes?: number }>(
       "POST", "/api/propagate-labels"),
+  /** Collapse duplicate same-name genres (e.g. two House parents) into one. */
+  mergeDuplicateGenres: () => req<{ merged: number }>("POST", "/api/merge-duplicate-genres"),
 
   analyze: () => req<{ started: boolean }>("POST", "/api/analyze"),
   tag: () => req<{ started: boolean }>("POST", "/api/tag"),
