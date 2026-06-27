@@ -185,6 +185,7 @@ class Engine:
             plans.append(write_genre(self.store, track, sub.name,
                                      parent=parent.name if parent else None,
                                      write_parent_to_grouping=self.config.write_parent_to_grouping,
+                                     comment=parent.name if parent else None,
                                      dry_run=dry_run))
         return plans
 

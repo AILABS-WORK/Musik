@@ -81,11 +81,14 @@ def _write_genre_to_file(
     subgenre: str,
     parent: Optional[str],
     write_parent_to_grouping: bool,
+    comment: Optional[str] = None,
 ) -> None:
-    """Persist genre (and optional grouping) into the file, preserving other tags."""
+    """Persist genre (subgenre -> Genre), the major -> Grouping (for Serato/Traktor) AND
+    the major -> Comment (rekordbox shows/searches Comment but not Grouping), preserving
+    other tags."""
     ext = _ext(path)
     if ext == ".mp3":
-        from mutagen.id3 import ID3, TCON, TIT1, ID3NoHeaderError
+        from mutagen.id3 import ID3, COMM, TCON, TIT1, ID3NoHeaderError
 
         try:
             tags = ID3(path)
@@ -94,6 +97,8 @@ def _write_genre_to_file(
         tags.setall("TCON", [TCON(encoding=3, text=[subgenre])])
         if write_parent_to_grouping and parent:
             tags.setall("TIT1", [TIT1(encoding=3, text=[parent])])
+        if comment:
+            tags.setall("COMM", [COMM(encoding=3, lang="eng", desc="", text=[comment])])
         # Save as ID3v2.3 — the version Pioneer/rekordbox reads most reliably (v2.4 genre
         # frames are sometimes missed). v2_version=3 makes mutagen down-convert encodings.
         tags.update_to_v23()
@@ -110,6 +115,8 @@ def _write_genre_to_file(
         audio["genre"] = [subgenre]
         if write_parent_to_grouping and parent:
             audio["grouping"] = [parent]
+        if comment:
+            audio["comment"] = [comment]
         audio.save()
     elif ext in (".m4a", ".mp4", ".aac"):
         from mutagen.mp4 import MP4
@@ -120,9 +127,11 @@ def _write_genre_to_file(
         audio.tags["\xa9gen"] = [subgenre]
         if write_parent_to_grouping and parent:
             audio.tags["\xa9grp"] = [parent]
+        if comment:
+            audio.tags["\xa9cmt"] = [comment]
         audio.save()
     elif ext in (".wav", ".wave", ".aiff", ".aif"):
-        from mutagen.id3 import TCON, TIT1
+        from mutagen.id3 import COMM, TCON, TIT1
 
         if ext in (".wav", ".wave"):
             from mutagen.wave import WAVE as _Container
@@ -134,6 +143,8 @@ def _write_genre_to_file(
         audio.tags.setall("TCON", [TCON(encoding=3, text=[subgenre])])
         if write_parent_to_grouping and parent:
             audio.tags.setall("TIT1", [TIT1(encoding=3, text=[parent])])
+        if comment:
+            audio.tags.setall("COMM", [COMM(encoding=3, lang="eng", desc="", text=[comment])])
         audio.save()
     else:
         raise RuntimeError(f"Unsupported audio format for tagging: {ext or path}")
@@ -145,6 +156,7 @@ def write_genre(
     subgenre: str,
     parent: Optional[str] = None,
     write_parent_to_grouping: bool = False,
+    comment: Optional[str] = None,
     dry_run: bool = False,
 ) -> dict:
     """Write ``subgenre`` into the track's genre field and log the action.
@@ -160,7 +172,7 @@ def write_genre(
 
     # Fail-soft: a single unwritable/odd file must never abort a bulk run.
     try:
-        _write_genre_to_file(path, subgenre, parent, write_parent_to_grouping)
+        _write_genre_to_file(path, subgenre, parent, write_parent_to_grouping, comment=comment)
     except Exception as e:
         result["error"] = str(e)
         return result
