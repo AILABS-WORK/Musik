@@ -619,6 +619,25 @@ class Engine:
         C = np.array([Ztr[ytr == nm].mean(axis=0) for nm in cnames])
         C = C / (np.linalg.norm(C, axis=1, keepdims=True) + 1e-9)
 
+        # Per-subgenre BPM from YOUR exemplars + an octave-aware tempo factor, so a track
+        # whose tempo is wildly off a subgenre (a 169 BPM track vs a ~124 BPM deep-house
+        # cluster) is down-weighted. CV: this lifts accuracy and kills tempo-mismatches.
+        ana = self.store.load_analysis()
+        cls_bpm = {}
+        for tid, nm in lab.items():
+            if nm in keep:
+                b = (ana.get(tid) or {}).get("bpm")
+                if b:
+                    cls_bpm.setdefault(nm, []).append(b)
+        cls_bpm_med = {nm: float(np.median(v)) for nm, v in cls_bpm.items() if v}
+
+        def bpm_factor(name, bpm):
+            med = cls_bpm_med.get(name)
+            if not med or not bpm:
+                return 1.0
+            d = min(abs(bpm - med), abs(bpm * 2 - med), abs(bpm / 2 - med))
+            return float(np.exp(-(d / 12.0) ** 2))
+
         labeled = set(lab)
         assigned = 0
         for tid in ids:
@@ -626,9 +645,11 @@ class Engine:
                 continue
             z = Z[idx[tid]]
             z = z / (np.linalg.norm(z) + 1e-9)
-            sims = C @ z
-            j = int(np.argmax(sims))
-            conf = round(float((sims[j] + 1.0) / 2.0), 3)
+            sims = (C @ z + 1.0) / 2.0  # 0..1 sound similarity to each subgenre centroid
+            bpm = (ana.get(tid) or {}).get("bpm")
+            scores = np.array([sims[j] * bpm_factor(cnames[j], bpm) for j in range(len(cnames))])
+            j = int(np.argmax(scores))
+            conf = round(float(scores[j]), 3)
             self.store.set_assignment(tid, canon_id[cnames[j]], conf, "propagate", status="suggested")
             assigned += 1
         for nm in keep:
