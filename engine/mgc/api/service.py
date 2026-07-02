@@ -1127,23 +1127,48 @@ class Engine:
                 progress(i + 1, len(tracks))
         return {"labeled": labeled, "total": len(tracks)}
 
-    def llm_genre_one(self, track_id: int) -> dict:
-        """A single-track LLM genre SUGGESTION (unvalidated) for the user to confirm.
+    def maest_styles(self, track_id: int) -> list:
+        """Stored MAEST Discogs-400 style predictions for a track ([] if not indexed)."""
+        import json as _json
+        try:
+            row = self.store.conn.execute(
+                "SELECT styles FROM maest WHERE track_id=?", (track_id,)).fetchone()
+            return _json.loads(row["styles"]) if row else []
+        except Exception:
+            return []
 
-        Tries a web-grounded guess first (search the real track, let the LLM name
-        the subgenre from those snippets) to avoid memory hallucinations; falls
-        back to the ungrounded filename/tags guess if grounding yields nothing."""
-        from mgc.llm.genre import llm_genre, llm_genre_grounded
+    def llm_genre_one(self, track_id: int) -> dict:
+        """A single-track genre SUGGESTION for the user to confirm. Best source first:
+        MAEST audio-based Discogs-400 styles (validated on this library — it listens,
+        so it works on unindexed underground tracks), then the web-grounded LLM, then
+        the LLM's filename/tags guess."""
+        from mgc.llm.genre import bpm_plausible, llm_genre, llm_genre_grounded
         from mgc.metadata.parse import parse_artist_title
         from mgc.tagging import get_audioset_labels, top_tags
         t = self.store.get_track(track_id)
         if not t:
             return {}
+        bpm = (self.store.get_analysis(track_id) or {}).get("bpm")
+        # 1) MAEST (pre-indexed, instant). Prefer a SPECIFIC style over an umbrella one
+        #    when the specific one is reasonably close behind.
+        styles = self.maest_styles(track_id)
+        if styles:
+            names = [(s["style"].split("---")[-1], float(s["p"])) for s in styles[:5]]
+            umbrella = {"techno", "house", "trance", "electro", "disco", "minimal", "acid"}
+            pick = names[0]
+            for nm, p in names[1:3]:
+                if pick[0].lower() in umbrella and nm.lower() not in umbrella \
+                        and p >= 0.35 * names[0][1]:
+                    pick = (nm, p)
+                    break
+            return {"genre": pick[0], "confidence": round(pick[1], 2),
+                    "plausible": bpm_plausible(pick[0], bpm), "source": "maest",
+                    "alternatives": [{"genre": n, "p": round(p, 2)} for n, p in names]}
+        # 2) web-grounded LLM; 3) ungrounded LLM guess.
         u = self.store.get_understanding(track_id) or {}
         labels = get_audioset_labels() or []
         tags = ([tg["label"] for tg in top_tags(u["audioset"], labels, k=4)]
                 if u.get("audioset") is not None and labels else [])
-        bpm = (self.store.get_analysis(track_id) or {}).get("bpm")
         id3 = t.existing_tags or {}
         artist, title = parse_artist_title(id3.get("title"), id3.get("artist"), t.path)
         grounded = llm_genre_grounded(artist, title, id3.get("artist"), tags, bpm,
